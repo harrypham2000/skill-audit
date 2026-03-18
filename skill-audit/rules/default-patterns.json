@@ -1,0 +1,99 @@
+{
+  "version": "0.1.0",
+  "updated": "2024-03-18",
+  "description": "Default security patterns for skill-audit",
+  "categories": {
+    "promptInjection": {
+      "name": "Prompt Injection (ASI01)",
+      "description": "Detects attempts to override system instructions or inject malicious prompts",
+      "patterns": [
+        { "pattern": "ignore\\s+(all\\s+)?previous\\s+(instructions?|rules?)", "id": "PI-001", "severity": "critical", "message": "Instruction override - ignore previous instructions" },
+        { "pattern": "you\\s+(are\\s+)?now\\s+(a|an|i am)\\s+\\w+", "id": "PI-002", "severity": "critical", "message": "Roleplay bypass - role impersonation" },
+        { "pattern": "forget\\s+(everything|all|your)", "id": "PI-003", "severity": "critical", "message": "Context forgetting attempt" },
+        { "pattern": "system\\s+prompt\\s+override", "id": "PI-004", "severity": "critical", "message": "System prompt override attempt" },
+        { "pattern": "act\\s+as\\s+if\\s+(you\\s+)?(have|no)\\s+(restrictions|limits)", "id": "PI-005", "severity": "critical", "message": "Restriction removal attempt" },
+        { "pattern": "\\[SYSTEM\\]|\\[ADMIN\\]|\\[ROOT\\]", "id": "PI-006", "severity": "critical", "message": "Fake role tags injection" },
+        { "pattern": "end\\s+of\\s+system\\s+prompt|---END---", "id": "PI-007", "severity": "high", "message": "Prompt termination marker" },
+        { "pattern": "debug\\s+mode\\s*:\\s*enabled|safety\\s+mode\\s*:\\s*off", "id": "PI-008", "severity": "high", "message": "Safety toggle disable" },
+        { "pattern": "<!--[\\s\\S]*?-->", "id": "PI-009", "severity": "high", "message": "Hidden instructions in HTML comments" },
+        { "pattern": "note\\s+to\\s+AI:|AI\\s+instruction:", "id": "PI-010", "severity": "high", "message": "AI directive injection" },
+        { "pattern": "(?:you\\s+must|you\\s+should)\\s+(not|never)", "id": "PI-011", "severity": "medium", "message": "Command to override restrictions" },
+        { "pattern": "bypass\\s+(restriction|rule|limit|safety)", "id": "PI-012", "severity": "medium", "message": "Bypass attempt" },
+        { "pattern": "disregard\\s+(all|your|the)\\s+(previous|system)", "id": "PI-013", "severity": "medium", "message": "Disregard instruction pattern" },
+        { "pattern": "i.*am\\s+the\\s+developer.*trust\\s+me", "id": "PI-014", "severity": "medium", "message": "Social engineering - developer trust exploitation" }
+      ]
+    },
+    "credentialLeaks": {
+      "name": "Credential Leaks (ASI04)",
+      "description": "Detects hardcoded secrets, API keys, and credential paths",
+      "patterns": [
+        { "pattern": "~/\\.ssh|/\\.ssh/", "id": "CL-001", "severity": "critical", "message": "SSH credential path reference" },
+        { "pattern": "~/\\.aws|/\\.aws/", "id": "CL-002", "severity": "critical", "message": "AWS credential path reference" },
+        { "pattern": "~/\\.env|mkdir.*\\.env", "id": "CL-003", "severity": "critical", "message": ".env file reference (potential secret exposure)" },
+        { "pattern": "curl\\s+(?!.*(-fsSL|-f\\s|-L)).*\\|\\s*(sh|bash|perl|python)", "id": "CL-004", "severity": "critical", "message": "Pipe to shell - code execution risk" },
+        { "pattern": "wget\\s+(?!.*(-q|-O)).*\\|\\s*(sh|bash)", "id": "CL-005", "severity": "critical", "message": "Pipe to shell - code execution risk" }
+      ]
+    },
+    "shellInjection": {
+      "name": "Shell Injection (ASI05)",
+      "description": "Detects dangerous shell commands and reverse shells",
+      "patterns": [
+        { "pattern": "nc\\s+-[elv]\\s+|netcat\\s+-[elv]", "id": "CE-001", "severity": "critical", "message": "Netcat reverse shell pattern" },
+        { "pattern": "bash\\s+-i\\s+.*\\&\\s*/dev/tcp/", "id": "CE-002", "severity": "critical", "message": "Bash reverse shell pattern" },
+        { "pattern": "rm\\s+-rf\\s+/\\s*$", "id": "CE-003", "severity": "critical", "message": "Destructive rm -rf / command (root)" },
+        { "pattern": "rm\\s+-rf\\s+\\$HOME|rm\\s+-rf\\s+~\\s*$|rm\\s+-rf\\s+/home\\s*$|rm\\s+-rf\\s+/tmp\\s*$", "id": "CE-004", "severity": "high", "message": "Recursive delete in user directory" },
+        { "pattern": "exec\\s+\\$\\(", "id": "CE-005", "severity": "high", "message": "Dynamic command execution" },
+        { "pattern": "eval\\s+\\$", "id": "CE-006", "severity": "high", "message": "Eval with variable interpolation" },
+        { "pattern": "subprocess.*shell\\s*=\\s*true", "id": "CE-007", "severity": "medium", "message": "Subprocess with shell=True" },
+        { "pattern": "os\\.system\\s*\\(", "id": "CE-008", "severity": "high", "message": "os.system() call - shell injection risk" },
+        { "pattern": "child_process.*exec\\s*\\(", "id": "CE-009", "severity": "medium", "message": "child_process.exec - verify input sanitization" },
+        { "pattern": "chmod\\s+[47]777", "id": "CE-010", "severity": "high", "message": "World-writable permissions" },
+        { "pattern": "process\\.fork\\s*\\(|child_process\\.spawn\\s*\\(|subprocess\\.spawn\\s*\\(", "id": "CE-011", "severity": "high", "message": "Process fork/spawn - potential crypto miner" }
+      ]
+    },
+    "exfiltration": {
+      "name": "Data Exfiltration (ASI02)",
+      "description": "Detects attempts to send data to external servers",
+      "patterns": [
+        { "pattern": "https?://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", "id": "EX-001", "severity": "critical", "message": "Raw IP address in URL - potential exfiltration" },
+        { "pattern": "fetch\\s*\\(\\s*[\"'`][^\"']+\\?(key|token|secret|password)", "id": "EX-002", "severity": "critical", "message": "API key in URL query string - exfiltration risk" },
+        { "pattern": "\\.send\\(.*(http|https|external)", "id": "EX-003", "severity": "critical", "message": "Data send to external server" },
+        { "pattern": "dns\\.resolve|dns\\.query|new\\s+DNS", "id": "EX-004", "severity": "critical", "message": "DNS resolution - potential DNS tunneling" },
+        { "pattern": "new\\s+WebSocket\\s*\\(\\s*[\"'`][^'\"`]+[\"'`]\\s*\\)", "id": "EX-005", "severity": "high", "message": "WebSocket connection - check target" },
+        { "pattern": "readFile.*send|fetch.*readFile|read_file.*fetch", "id": "EX-006", "severity": "critical", "message": "File read + send exfiltration chain" }
+      ]
+    },
+    "secrets": {
+      "name": "Hardcoded Secrets (ASI04)",
+      "description": "Detects API keys, tokens, and credentials in code",
+      "patterns": [
+        { "pattern": "sk-[a-zA-Z0-9]{20,}", "id": "SC-001", "severity": "critical", "message": "OpenAI API key pattern" },
+        { "pattern": "github_pat_[a-zA-Z0-9_]{20,}", "id": "SC-002", "severity": "critical", "message": "GitHub PAT pattern" },
+        { "pattern": "ghp_[a-zA-Z0-9]{36}", "id": "SC-003", "severity": "critical", "message": "GitHub OAuth token pattern" },
+        { "pattern": "xox[baprs]-[a-zA-Z0-9]{10,}", "id": "SC-004", "severity": "critical", "message": "Slack token pattern" },
+        { "pattern": "AKIA[0-9A-Z]{16}", "id": "SC-005", "severity": "critical", "message": "AWS access key pattern" }
+      ]
+    },
+    "toolMisuse": {
+      "name": "Tool Misuse (ASI02)",
+      "description": "Detects potential misuse of tools and environment",
+      "patterns": [
+        { "pattern": "upload.*(file|data).*(external|remote|server)", "id": "TM-001", "severity": "high", "message": "Potential data exfiltration pattern" },
+        { "pattern": "export\\s+(API|TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL)", "id": "TM-002", "severity": "high", "message": "Exporting sensitive environment variable" },
+        { "pattern": "setenv.*(PASSWORD|TOKEN|KEY|SECRET|CREDS)", "id": "TM-003", "severity": "high", "message": "Setting sensitive environment variable" },
+        { "pattern": "process\\.env\\[.*(KEY|SECRET|TOKEN|PASSWORD)", "id": "TM-004", "severity": "medium", "message": "Accessing sensitive env vars" }
+      ]
+    },
+    "behavioral": {
+      "name": "Behavioral Manipulation (ASI09)",
+      "description": "Detects attempts to manipulate AI behavior",
+      "patterns": [
+        { "pattern": "^(always|never)\\s+(say|do|follow|use|assume|accept|must|should)", "id": "BM-001", "severity": "medium", "message": "Absolute command pattern - may override safety", "flags": "im" },
+        { "pattern": "^(never|always)\\s+(question|verify|check|ask)", "id": "BM-002", "severity": "medium", "message": "Verification suppression", "flags": "im" },
+        { "pattern": "^trust\\s+(me|this| blindly)", "id": "BM-003", "severity": "medium", "message": "Blind trust request", "flags": "im" },
+        { "pattern": "^don.*t\\s+(need|require).*(permission|approval|confirm)", "id": "BM-004", "severity": "medium", "message": "Permission bypass encouragement", "flags": "im" },
+        { "pattern": "^keep.*(this|secret|hidden).*(from|between)", "id": "BM-005", "severity": "medium", "message": "Secret keeping instruction", "flags": "im" }
+      ]
+    }
+  }
+}

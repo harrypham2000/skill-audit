@@ -2,20 +2,55 @@ import { readFileSync } from "fs";
 import { basename, extname } from "path";
 import { SkillInfo, SkillManifest, Finding } from "./types.js";
 import { resolveSkillPath, getSkillFiles } from "./discover.js";
+import { loadAndCompile, hasPatternsFile, getPatternMetadata, CompiledPattern } from "./patterns.js";
 
 /**
  * Phase 1 - Layer 2: Security Auditor
- * 
+ *
  * Detects dangerous behavior in skill content and bundled files.
  * This runs AFTER spec validation - security findings may be warnings.
- * 
+ *
  * Security categories (OWASP Agentic Top 10):
  * - ASI01: Prompt Injection
  * - ASI02: Tool Misuse / Exfiltration
  * - ASI04: Secrets / Supply Chain
  * - ASI05: Code Execution
  * - ASI09: Behavioral Manipulation
+ *
+ * Pattern sources:
+ * 1. External patterns file (rules/default-patterns.json) - preferred
+ * 2. Hardcoded fallback patterns - used if external file missing
  */
+
+// ============================================================
+// Pattern Loading
+// ============================================================
+
+let compiledPatterns: Map<string, CompiledPattern[]> | null = null;
+let patternMetadata = { version: "unknown", updated: "unknown" };
+
+/**
+ * Initialize patterns (load from file or use hardcoded fallback)
+ */
+function initPatterns(): Map<string, CompiledPattern[]> {
+  if (compiledPatterns) {
+    return compiledPatterns;
+  }
+  
+  try {
+    if (hasPatternsFile()) {
+      compiledPatterns = loadAndCompile();
+      patternMetadata = getPatternMetadata();
+      return compiledPatterns;
+    }
+  } catch (error) {
+    console.warn("Failed to load external patterns, using hardcoded fallback:", error);
+  }
+  
+  // Fallback to hardcoded patterns (original implementation)
+  compiledPatterns = new Map();
+  return compiledPatterns;
+}
 
 // ============================================================
 // PROMPT INJECTION PATTERNS (ASI01 - Goal Hijacking)
@@ -179,17 +214,32 @@ interface PatternDef {
   message: string;
 }
 
-function scanContent(content: string, file: string, patterns: PatternDef[]): Finding[] {
+interface CompiledPatternDef {
+  regex: RegExp;
+  id: string;
+  severity: string;
+  message: string;
+  category: string;
+}
+
+function scanContent(content: string, file: string, patterns: PatternDef[] | CompiledPatternDef[]): Finding[] {
   const findings: Finding[] = [];
   const lines = content.split("\n");
 
-  for (const { pattern, id, severity = "medium", message } of patterns) {
+  for (const patternDef of patterns) {
+    const regex = 'regex' in patternDef ? patternDef.regex : patternDef.pattern;
+    const id = patternDef.id;
+    const severity = 'severity' in patternDef ? patternDef.severity : (patternDef as PatternDef).severity || "medium";
+    const message = patternDef.message;
+    const category = 'category' in patternDef ? patternDef.category : getCategoryFromId(id);
+    const asixx = 'category' in patternDef ? mapCategoryToASIXX(category) : getASIXXFromId(id);
+
     for (let i = 0; i < lines.length; i++) {
-      if (pattern.test(lines[i])) {
+      if (regex.test(lines[i])) {
         findings.push({
           id,
-          category: getCategoryFromId(id) as any,
-          asixx: getASIXXFromId(id),
+          category: category as any,
+          asixx,
           severity: severity as any,
           file,
           line: i + 1,
@@ -200,6 +250,19 @@ function scanContent(content: string, file: string, patterns: PatternDef[]): Fin
     }
   }
   return findings;
+}
+
+function mapCategoryToASIXX(category: string): string {
+  const map: Record<string, string> = {
+    "promptInjection": "ASI01",
+    "credentialLeaks": "ASI04",
+    "shellInjection": "ASI05",
+    "exfiltration": "ASI02",
+    "secrets": "ASI04",
+    "toolMisuse": "ASI02",
+    "behavioral": "ASI09"
+  };
+  return map[category] || "ASI04";
 }
 
 function scanCodeBlocksInMarkdown(content: string, file: string): Finding[] {
@@ -320,6 +383,10 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
     };
   }
 
+  // Initialize patterns (load from file or use hardcoded fallback)
+  const patterns = initPatterns();
+  const hasExternalPatterns = patterns.size > 0;
+
   const files = getSkillFiles(resolvedPath);
   const findings: Finding[] = [];
   const unreadableFiles: string[] = [];
@@ -330,19 +397,48 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
     try {
       const content = readFileSync(file, "utf-8");
 
-      if (filename === "SKILL.md" || filename === "AGENTS.md") {
-        findings.push(...scanContent(content, file, PROMPT_INJECTION_PATTERNS));
-        findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_MD));
-        findings.push(...scanContent(content, file, EXFILTRATION_PATTERNS));
-        findings.push(...scanContent(content, file, BEHAVIORAL_PATTERNS));
-        findings.push(...scanContent(content, file, DANGEROUS_PATTERNS));
+      if (filename === "SKILL.md" || filename === "SKILL.md") {
+        // Use external patterns if available, otherwise use hardcoded
+        if (hasExternalPatterns) {
+          const piPatterns = patterns.get("promptInjection") || [];
+          const clPatterns = patterns.get("credentialLeaks") || [];
+          const exPatterns = patterns.get("exfiltration") || [];
+          const bmPatterns = patterns.get("behavioral") || [];
+          const cePatterns = patterns.get("shellInjection") || [];
+          
+          findings.push(...scanContent(content, file, piPatterns));
+          findings.push(...scanContent(content, file, clPatterns));
+          findings.push(...scanContent(content, file, exPatterns));
+          findings.push(...scanContent(content, file, bmPatterns));
+          findings.push(...scanContent(content, file, cePatterns));
+        } else {
+          findings.push(...scanContent(content, file, PROMPT_INJECTION_PATTERNS));
+          findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_MD));
+          findings.push(...scanContent(content, file, EXFILTRATION_PATTERNS));
+          findings.push(...scanContent(content, file, BEHAVIORAL_PATTERNS));
+          findings.push(...scanContent(content, file, DANGEROUS_PATTERNS));
+        }
         findings.push(...scanCodeBlocksInMarkdown(content, file));
       } else if (isCodeFile(file)) {
-        findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_CODE));
-        findings.push(...scanContent(content, file, EXFILTRATION_PATTERNS));
-        findings.push(...scanContent(content, file, DANGEROUS_PATTERNS));
-        findings.push(...scanContent(content, file, SECRET_PATTERNS));
-        findings.push(...scanContent(content, file, TOOL_MISUSE_PATTERNS));
+        if (hasExternalPatterns) {
+          const clPatterns = patterns.get("credentialLeaks") || [];
+          const exPatterns = patterns.get("exfiltration") || [];
+          const cePatterns = patterns.get("shellInjection") || [];
+          const scPatterns = patterns.get("secrets") || [];
+          const tmPatterns = patterns.get("toolMisuse") || [];
+          
+          findings.push(...scanContent(content, file, clPatterns));
+          findings.push(...scanContent(content, file, exPatterns));
+          findings.push(...scanContent(content, file, cePatterns));
+          findings.push(...scanContent(content, file, scPatterns));
+          findings.push(...scanContent(content, file, tmPatterns));
+        } else {
+          findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_CODE));
+          findings.push(...scanContent(content, file, EXFILTRATION_PATTERNS));
+          findings.push(...scanContent(content, file, DANGEROUS_PATTERNS));
+          findings.push(...scanContent(content, file, SECRET_PATTERNS));
+          findings.push(...scanContent(content, file, TOOL_MISUSE_PATTERNS));
+        }
       }
     } catch (e) {
       unreadableFiles.push(file);

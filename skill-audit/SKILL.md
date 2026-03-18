@@ -166,7 +166,7 @@ Found 3 skills
    Safe: 1 | Risky: 1 | Dangerous: 1 | Malicious: 0
    Skills with spec issues: 1 | Security issues: 2
 
-⚠️  Vulnerability DB is stale (4.2 days for KEV, 5.1 days for EPSS)
+⚠️  Vulnerability DB is stale (4.2 days for KEV, 5.1 days for EPSS, 2.0 days for NVD)
    Run: npx skill-audit --update-db
 
 ❌ 1 skills exceed threshold 3.0
@@ -191,8 +191,9 @@ Three-layer validation approach:
    - Maps to OWASP Agentic Top 10
 
 3. **Intelligence Service**
-   - Caches CVE/GHSA/KEV/EPSS data
+   - Caches CVE/GHSA/KEV/EPSS/NVD data
    - Native HTTP/fetch (no shell dependencies)
+   - Differentiated cache lifetimes by source (KEV/NVD: 1 day, EPSS/GHSA: 3 days, OSV: 7 days)
 
 ## Related Skills
 

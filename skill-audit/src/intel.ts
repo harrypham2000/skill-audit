@@ -59,8 +59,8 @@ export interface UpdateMetrics {
   lastUpdate: string;
   kevCount: number;
   epssCount: number;
-  nvdCount: number;
-  ghsaCount: number;
+  nvdCount?: number;
+  ghsaCount?: number;
   fetchDurationMs: number;
   errors: string[];
 }
