@@ -21,27 +21,50 @@ npm run build
 ## Usage
 
 ```bash
-# Audit all global skills
-npx skills-audit
+# Audit global skills
+npx skill-audit -g
 
 # Audit with verbose output
-npx skills-audit -v
+npx skill-audit -v
 
 # JSON output for CI
-npx skills-audit --json > audit-results.json
+npx skill-audit --json > audit-results.json
 
 # Fail if risk score exceeds threshold
-npx skills-audit --threshold 5.0
+npx skill-audit --threshold 5.0
 
 # Skip dependency scanning (faster)
-npx skills-audit --no-deps
+npx skill-audit --no-deps
 
 # Filter by agent
-npx skills-audit -a "Claude Code" "Qwen Code"
+npx skill-audit -a "Claude Code" "Qwen Code"
 
 # Project-level skills only
-npx skills-audit --project
+npx skill-audit --project
+
+# Lint mode (spec validation only)
+npx skill-audit --mode lint
 ```
+
+## Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-g, --global` | Audit global skills | ✓ |
+| `-p, --project` | Audit project-level skills | |
+| `--mode <lint|audit>` | Lint (spec) or full audit | audit |
+| `-t, --threshold <score>` | Fail if risk > threshold | 7.0 |
+| `-j, --json` | JSON output | |
+| `-o, --output <file>` | Save to file | |
+| `--no-deps` | Skip dependency scan | |
+| `-v, --verbose` | Verbose output | |
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (no blocking issues) |
+| 1 | Threshold exceeded or errors |
 
 ## Risk Levels
 
@@ -70,3 +93,11 @@ npx skills-audit --project
 - Node.js 18+
 - npx (for skills CLI)
 - trivy (optional, for dependency scanning)
+
+## Troubleshooting
+
+**False positives**: Review finding at file:line, add inline comment explaining legitimate use
+
+**Stale CVEs**: Run `npx skill-audit --update-db` to refresh KEV/EPSS/OSV feeds
+
+**Skill not found**: Verify `SKILL.md` exists in root or `skills/` directory

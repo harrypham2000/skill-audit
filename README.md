@@ -1,8 +1,23 @@
 # skill-audit
 
+![npm](https://img.shields.io/npm/v/skill-audit)
+![npm downloads](https://img.shields.io/npm/dm/skill-audit)
+![License](https://img.shields.io/npm/l/skill-audit)
+
 Security auditing tool for AI agent skills.
 
 > Part of the [Vercel Skills](https://skills.sh) ecosystem — validating skills against the Agent Skills specification and detecting vulnerabilities across OWASP Agentic Top 10 categories.
+
+## Why
+
+AI agent skills can execute arbitrary code, access files, and make network requests.
+Before installing a third-party skill, you need to know:
+- Does it try to hijack the agent's goals?
+- Does it leak your API keys or tokens?
+- Does it run dangerous scripts?
+- Are its dependencies vulnerable?
+
+`skill-audit` answers these questions automatically.
 
 ## Overview
 
@@ -29,6 +44,38 @@ npx skill-audit --mode audit -j > audit-results.json
 
 # Fail CI/CD on dangerous skills
 npx skill-audit -g -t 3.0
+```
+
+## Sample Output
+
+```
+🔍 Auditing 3 skills...
+
+✅ safe-skill (0.5) - No issues
+⚠️  risky-skill (3.2) - 2 findings
+   - PI-001: Prompt injection pattern detected (SKILL.md:15)
+   - SC-003: Hardcoded API key pattern (src/index.ts:8)
+🔴 dangerous-skill (6.8) - 5 findings, exceeds threshold
+
+❌ 1 skill exceeds threshold 3.0
+```
+
+## CI/CD Integration
+
+```yaml
+# .github/workflows/audit-skills.yml
+name: Audit Skills
+on: [push, pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx skill-audit -g -t 3.0 --json > results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-results
+          path: results.json
 ```
 
 ## Project Structure
@@ -86,9 +133,16 @@ Enriched with real-time threat data from:
 
 ## Related Projects
 
-- **[Vercel Skills](https://skills.sh)** — Agent skills registry and runtime
-- **[GoClaw](https://github.com/nextlevelbuilder/goclaw)** — Eval-driven approach inspiration
-- **[OWASP Agentic Top 10](https://owasp.org/www-project-agentic-ai-application-security-verification-standard/)** — Security standard reference
+### Vercel Skills Ecosystem
+- **[Vercel Skills](https://skills.sh)** — Agent skills registry and runtime where `skill-audit` validates submissions
+- **[Anthropic Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)** — SKILL.md specification that `skill-audit` validates against
+
+### Security & Validation
+- **[GoClaw](https://github.com/nextlevelbuilder/goclaw)** — Multi-agent gateway with 5-layer security (prompt injection detection, SSRF protection, shell deny patterns). Inspired `skill-audit`'s pattern-based vulnerability detection
+- **[Trivy](https://github.com/aquasecurity/trivy)** — Vulnerability scanner used by `skill-audit` for dependency CVE scanning
+
+### Standards
+- **[OWASP Agentic Top 10](https://owasp.org/www-project-agentic-ai-application-security-verification-standard/)** — ASI01-ASI10 threat categories that `skill-audit` maps findings to
 
 ## License
 
