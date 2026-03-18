@@ -23,18 +23,21 @@ const METRICS_FILE = join(PACKAGE_ROOT, ".cache/skill-audit/metrics.json");
 export interface AdvisoryRecord {
   id: string;
   aliases: string[];
-  source: "OSV" | "GHSA" | "NVD" | "KEV" | "EPSS";
+  source: "OSV" | "GHSA" | "NVD" | "KEV" | "EPSS" | "SONATYPE";
   ecosystem?: string;
   packageName?: string;
   affectedVersions?: string[];
   severity?: string;
   cvss?: number;
+  cvssVector?: string;
   epss?: number;
   kev?: boolean;
   published?: string;
   modified?: string;
   references: string[];
   summary?: string;
+  cwe?: string[];
+  fixVersion?: string;
 }
 
 export interface IntelResult {
@@ -321,29 +324,119 @@ export async function queryOSV(ecosystem: string, packageName: string): Promise<
 }
 
 /**
- * Query GHSA via GitHub API
+ * Query GHSA via GitHub GraphQL API
+ * 
+ * Note: GHSA integration requires GitHub API authentication.
+ * For now, OSV provides comprehensive coverage for most ecosystems.
+ * 
+ * To implement GHSA:
+ * 1. Get GitHub token: https://github.com/settings/tokens
+ * 2. Set GITHUB_TOKEN environment variable
+ * 3. Use GraphQL API with SecurityAdvisory query
+ * 
+ * Example:
+ * ```
+ * const token = process.env.GITHUB_TOKEN;
+ * const response = await fetch('https://api.github.com/graphql', {
+ *   method: 'POST',
+ *   headers: {
+ *     'Authorization': `Bearer ${token}`,
+ *     'Content-Type': 'application/json'
+ *   },
+ *   body: JSON.stringify({
+ *     query: `query {
+ *       securityVulnerabilities(first: 100, ecosystem: NPM, package: "packageName") {
+ *         nodes {
+ *           advisory { ghsaId, summary, severity }
+ *         }
+ *       }
+ *     }`
+ *   })
+ * });
+ * ```
  */
 export async function queryGHSA(ecosystem: string, packageName: string): Promise<AdvisoryRecord[]> {
-  // GHSA API requires authentication for higher rate limits
-  // This is a placeholder - in production, use a GitHub token
+  const token = process.env.GITHUB_TOKEN;
+  
+  if (!token) {
+    // GHSA requires authentication - skip silently
+    // OSV provides comprehensive coverage as fallback
+    return [];
+  }
+
   try {
-    const ghsaEcosystemMap: Record<string, string> = {
-      'npm': 'npm',
-      'pypi': 'PyPI',
-      'go': 'Go',
-      'cargo': 'Cargo',
-      'rubygems': 'RubyGems',
-      'maven': 'Maven',
-      'nuget': 'NuGet'
+    const response = await fetchWithRetry('https://api.github.com/graphql', FETCH_TIMEOUT_MS, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'skill-audit/0.1.0 (Vulnerability Intelligence Scanner)'
+      },
+      body: JSON.stringify({
+        query: `
+          query GetAdvisories($ecosystem: SecurityAdvisoryEcosystem!, $package: String!) {
+            securityVulnerabilities(first: 100, ecosystem: $ecosystem, package: $package) {
+              nodes {
+                advisory {
+                  ghsaId
+                  summary
+                  severity
+                  publishedAt
+                  identifiers { type, value }
+                }
+                severity
+                vulnerableVersionRange
+              }
+            }
+          }
+        `,
+        variables: {
+          ecosystem: ecosystem.toUpperCase(),
+          package: packageName
+        }
+      })
+    });
+
+    if (!response.ok) {
+      console.error(`GHSA API error: ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as {
+      data?: {
+        securityVulnerabilities?: {
+          nodes?: Array<{
+            advisory?: {
+              ghsaId: string;
+              summary: string;
+              severity: string;
+              publishedAt: string;
+              identifiers?: Array<{ type: string; value: string }>;
+            };
+            severity: string;
+            vulnerableVersionRange: string;
+          }>;
+        };
+      };
     };
 
-    const ghsaQuery = encodeURIComponent(`${packageName} repo:github/advisory-database`);
-    // Note: This is a simplified approach - production would use GraphQL API
-    console.log(`GHSA query: ${ecosystem}/${packageName} (API token recommended for production)`);
-    
-    return [];
+    if (!data.data?.securityVulnerabilities?.nodes) {
+      return [];
+    }
+
+    return data.data.securityVulnerabilities.nodes.map(node => ({
+      id: node.advisory?.ghsaId || `GHSA-unknown`,
+      aliases: node.advisory?.identifiers?.map(i => i.value) || [],
+      source: "GHSA" as const,
+      ecosystem,
+      packageName,
+      severity: node.advisory?.severity || node.severity,
+      published: node.advisory?.publishedAt,
+      summary: node.advisory?.summary,
+      references: []
+    }));
   } catch (error) {
-    console.error(`GHSA query failed:`, error);
+    console.error(`GHSA query failed for ${ecosystem}/${packageName}:`, error);
     return [];
   }
 }
