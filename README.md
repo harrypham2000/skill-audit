@@ -1,8 +1,8 @@
 # skill-audit
 
-![npm](https://img.shields.io/npm/v/skill-audit)
-![npm downloads](https://img.shields.io/npm/dm/skill-audit)
-![License](https://img.shields.io/npm/l/skill-audit)
+[![npm](https://img.shields.io/npm/v/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
+[![npm downloads](https://img.shields.io/npm/dm/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
+[![License](https://img.shields.io/npm/l/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
 
 Security auditing tool for AI agent skills.
 
@@ -33,17 +33,23 @@ Before installing a third-party skill, you need to know:
 ## Quick Start
 
 ```bash
+# Install globally
+npm install -g @hungpg/skill-audit
+
 # Audit global skills
-npx skill-audit -g
+npx @hungpg/skill-audit -g
+
+# Or use the installed CLI
+skill-audit -g
 
 # Lint mode (spec validation only - fast)
-npx skill-audit --mode lint
+skill-audit --mode lint
 
 # Full audit with JSON output
-npx skill-audit --mode audit -j > audit-results.json
+skill-audit --mode audit -j > audit-results.json
 
 # Fail CI/CD on dangerous skills
-npx skill-audit -g -t 3.0
+skill-audit -g -t 3.0
 ```
 
 ## Sample Output
@@ -71,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npx skill-audit -g -t 3.0 --json > results.json
+      - run: npx @hungpg/skill-audit -g -t 3.0 --json > results.json
       - uses: actions/upload-artifact@v4
         with:
           name: audit-results
@@ -120,7 +126,7 @@ The vulnerability database updates automatically:
 
 1. **On install** - `postinstall` hook fetches latest KEV/EPSS feeds
 2. **Daily** - GitHub Actions workflow keeps cache fresh (public repos)
-3. **Manual** - Run `npx skill-audit --update-db` anytime
+3. **Manual** - Run `npx @hungpg/skill-audit --update-db` anytime
 
 ⚠️ **Stale cache warning**: If feeds are >3 days old, audit output will warn you to update.
 
@@ -130,10 +136,10 @@ For environments without GitHub Actions:
 
 ```bash
 # Daily update at 2 AM (Linux/macOS)
-0 2 * * * cd /path/to/skill-audit && npx skill-audit --update-db --quiet
+0 2 * * * npx @hungpg/skill-audit --update-db --quiet
 
 # Windows Task Scheduler
-schtasks /create /tn "skill-audit-update" /tr "npx skill-audit --update-db" /sc daily /st 02:00
+schtasks /create /tn "skill-audit-update" /tr "npx @hungpg/skill-audit --update-db" /sc daily /st 02:00
 ```
 
 ## Use Cases

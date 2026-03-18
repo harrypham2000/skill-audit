@@ -13,37 +13,38 @@ Security auditing CLI for AI agent skills.
 ## Installation
 
 ```bash
-cd skill-audit
-npm install
-npm run build
+npm install -g @hungpg/skill-audit
 ```
 
 ## Usage
 
 ```bash
 # Audit global skills
-npx skill-audit -g
+skill-audit -g
 
 # Audit with verbose output
-npx skill-audit -v
+skill-audit -v
 
 # JSON output for CI
-npx skill-audit --json > audit-results.json
+skill-audit --json > audit-results.json
 
 # Fail if risk score exceeds threshold
-npx skill-audit --threshold 5.0
+skill-audit --threshold 5.0
 
 # Skip dependency scanning (faster)
-npx skill-audit --no-deps
+skill-audit --no-deps
 
 # Filter by agent
-npx skill-audit -a "Claude Code" "Qwen Code"
+skill-audit -a "Claude Code" "Qwen Code"
 
 # Project-level skills only
-npx skill-audit --project
+skill-audit --project
 
 # Lint mode (spec validation only)
-npx skill-audit --mode lint
+skill-audit --mode lint
+
+# Update vulnerability DB manually
+skill-audit --update-db
 ```
 
 ## Options
@@ -115,7 +116,7 @@ Feeds are cached locally with automatic freshness checks:
 
 **False positives**: Review finding at file:line, add inline comment explaining legitimate use
 
-**Stale DB warning**: Run `npx skill-audit --update-db` to refresh KEV/EPSS/OSV feeds
+**Stale DB warning**: Run `skill-audit --update-db` to refresh KEV/EPSS/OSV feeds
 
 **Skill not found**: Verify `SKILL.md` exists in root or `skills/` directory
 
