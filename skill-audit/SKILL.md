@@ -1,6 +1,6 @@
 ---
 name: skill-audit
-description: This skill should be used when the user asks to "audit AI agent skills for security vulnerabilities", "evaluate third-party skills before installing", "check for prompt injection or secrets leakage", "scan skills for code execution risks", "validate skills against Agent Skills specification", or "assess skill security posture with CVE/GHSA/KEV/EPSS intelligence".
+description: This skill should be used when the user asks to "audit AI agent skills for security vulnerabilities", "evaluate third-party skills before installing", "check for prompt injection or secrets leakage", "scan skills for code execution risks", "validate skills against Agent Skills specification", or "assess skill security posture with CVE/GHSA/KEV/EPSS/NVD intelligence".
 license: MIT
 compatibility: Node.js 18+ with npm or yarn
 metadata:
@@ -75,6 +75,8 @@ Full security audit including:
 Pulls latest vulnerability intelligence:
 - CISA KEV (Known Exploited Vulnerabilities)
 - FIRST EPSS (Exploit Prediction Scoring) - via api.first.org/data/v1
+- NIST NVD (National Vulnerability Database) - CVSS scores, CWE mappings
+- GitHub Security Advisories (GHSA) - ecosystem-specific advisories
 - OSV.dev vulnerabilities
 
 Caches to `.cache/skill-audit/feeds/` for offline use.
@@ -148,7 +150,7 @@ npx skill-audit -g -o ./audit-report.json
 npx skill-audit -g -t 3.0
 
 # Update intelligence feeds
-npx skill-audit --update-db --source kev epss
+npx skill-audit --update-db --source kev epss nvd
 
 # Audit project-level skills only
 npx skill-audit -p --mode audit -v
@@ -216,6 +218,8 @@ Three-layer validation approach:
 - **[OWASP AI Security Top 10](https://owasp.org/www-project-top-ten.html)** - ASI01-ASI10 threat categories
 - **[CISA KEV Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)** - Actively exploited vulnerabilities
 - **[FIRST EPSS](https://www.first.org/epss/)** - Exploit Prediction Scoring System
+- **[NIST NVD](https://nvd.nist.gov/)** - National Vulnerability Database (official CVE database)
+- **[GitHub Security Advisories](https://github.com/advisories)** - GHSA vulnerability database
 - **[OSV.dev](https://osv.dev/)** - Open Source Vulnerability database
 
 ### Intelligence Cache
@@ -223,5 +227,7 @@ Three-layer validation approach:
 | Source | Update Frequency | Max Cache Age | Warning Threshold |
 |--------|-----------------|---------------|-------------------|
 | CISA KEV | Daily | 1 day | 3 days |
+| NIST NVD | Daily | 1 day | 3 days |
+| GitHub GHSA | 3 days | 3 days | 3 days |
 | FIRST EPSS | 3-day cycle | 3 days | 3 days |
 | OSV.dev | On-query | 7 days | 3 days |

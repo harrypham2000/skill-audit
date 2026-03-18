@@ -59,6 +59,8 @@ export interface UpdateMetrics {
   lastUpdate: string;
   kevCount: number;
   epssCount: number;
+  nvdCount: number;
+  ghsaCount: number;
   fetchDurationMs: number;
   errors: string[];
 }
@@ -66,6 +68,8 @@ export interface UpdateMetrics {
 // Cache configuration - differentiated by source update frequency
 const MAX_CACHE_AGE_DAYS: Record<string, number> = {
   kev: 1,   // Daily updates - critical for actively exploited vulns
+  nvd: 1,   // Daily - official NVD database updates frequently
+  ghsa: 3,  // 3 days - GitHub Security Advisories
   epss: 3,  // Matches FIRST.org update cycle
   osv: 7    // Stable database - weekly acceptable
 };
@@ -165,13 +169,17 @@ function recordFetchResult(source: string, count: number, durationMs: number, er
   const metrics = loadMetrics();
   metrics.lastUpdate = new Date().toISOString();
   metrics.fetchDurationMs += durationMs;
-  
+
   if (source === 'kev') {
     metrics.kevCount = count;
   } else if (source === 'epss') {
     metrics.epssCount = count;
+  } else if (source === 'nvd') {
+    metrics.nvdCount = count;
+  } else if (source === 'ghsa') {
+    metrics.ghsaCount = count;
   }
-  
+
   if (error) {
     metrics.errors.push(`${source}: ${error}`);
     // Keep only last 10 errors
@@ -179,7 +187,7 @@ function recordFetchResult(source: string, count: number, durationMs: number, er
       metrics.errors = metrics.errors.slice(-10);
     }
   }
-  
+
   saveMetrics(metrics);
 }
 
@@ -497,7 +505,7 @@ export async function fetchKEV(): Promise<AdvisoryRecord[]> {
 export async function fetchEPSS(): Promise<AdvisoryRecord[]> {
   const startTime = Date.now();
   const url = 'https://api.first.org/data/v1/epss?limit=500&sort=epss';
-  
+
   try {
     const response = await fetchWithRetry(url);
     const data = await response.json() as {
@@ -532,6 +540,139 @@ export async function fetchEPSS(): Promise<AdvisoryRecord[]> {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     recordFetchResult('epss', 0, Date.now() - startTime, errorMsg);
     console.error(`EPSS fetch failed:`, error);
+    return [];
+  }
+}
+
+/**
+ * Fetch NIST NVD (National Vulnerability Database)
+ * Uses NVD API v2.0 with CVSS scoring
+ * API: https://nvd.nist.gov/developers/vulnerabilities
+ */
+export async function fetchNVD(): Promise<AdvisoryRecord[]> {
+  const startTime = Date.now();
+  const apiKey = process.env.NVD_API_KEY;
+
+  // Calculate date range for last 24 hours
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // NVD API requires ISO8601 format without milliseconds
+  const formatDate = (date: Date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const lastModStartDate = formatDate(yesterday);
+  const lastModEndDate = formatDate(now);
+
+  const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?lastModStartDate=${lastModStartDate}&lastModEndDate=${lastModEndDate}`;
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'skill-audit/0.1.0 (Vulnerability Intelligence Scanner)'
+    };
+
+    if (apiKey) {
+      headers['apiKey'] = apiKey;
+    }
+
+    const response = await fetchWithRetry(url, FETCH_TIMEOUT_MS, { headers });
+    const data = await response.json() as {
+      resultsPerPage: number;
+      startIndex: number;
+      totalResults: number;
+      format: string;
+      version: string;
+      vulnerabilities?: Array<{
+        cve: {
+          id: string;
+          sourceIdentifier?: string;
+          published: string;
+          lastModified: string;
+          vulnerabilityStatus: string;
+          descriptions?: Array<{
+            lang: string;
+            value: string;
+          }>;
+          metrics?: {
+            cvssMetricV31?: Array<{
+              cvssData: {
+                version: string;
+                vectorString: string;
+                baseScore: number;
+                baseSeverity: string;
+              };
+            }>;
+            cvssMetricV30?: Array<{
+              cvssData: {
+                version: string;
+                vectorString: string;
+                baseScore: number;
+                baseSeverity: string;
+              };
+            }>;
+          };
+          weaknesses?: Array<{
+            description?: Array<{
+              lang: string;
+              value: string; // CWE-ID
+            }>;
+          }>;
+          references?: Array<{
+            url: string;
+            source?: string;
+          }>;
+        }
+      }>;
+    };
+
+    if (!data.vulnerabilities) {
+      recordFetchResult('nvd', 0, Date.now() - startTime, 'No vulnerabilities in response');
+      return [];
+    }
+
+    const records = data.vulnerabilities.map(v => {
+      // Extract CVSS score (prefer v3.1, fallback to v3.0)
+      let cvss: number | undefined;
+      let cvssVector: string | undefined;
+      let severity: string | undefined;
+
+      if (v.cve.metrics?.cvssMetricV31?.[0]?.cvssData) {
+        const cvss31 = v.cve.metrics.cvssMetricV31[0].cvssData;
+        cvss = cvss31.baseScore;
+        cvssVector = cvss31.vectorString;
+        severity = cvss31.baseSeverity;
+      } else if (v.cve.metrics?.cvssMetricV30?.[0]?.cvssData) {
+        const cvss30 = v.cve.metrics.cvssMetricV30[0].cvssData;
+        cvss = cvss30.baseScore;
+        cvssVector = cvss30.vectorString;
+        severity = cvss30.baseSeverity;
+      }
+
+      // Extract CWE
+      const cwe = v.cve.weaknesses?.[0]?.description?.map(d => d.value) || [];
+
+      // Extract description as summary
+      const summary = v.cve.descriptions?.find(d => d.lang === 'en')?.value;
+
+      return {
+        id: v.cve.id,
+        aliases: [v.cve.id],
+        source: "NVD" as const,
+        severity,
+        cvss,
+        cvssVector,
+        cwe,
+        published: v.cve.published,
+        modified: v.cve.lastModified,
+        summary,
+        references: v.cve.references?.map(r => r.url) || []
+      };
+    });
+
+    recordFetchResult('nvd', records.length, Date.now() - startTime);
+    return records;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    recordFetchResult('nvd', 0, Date.now() - startTime, errorMsg);
+    console.error(`NVD fetch failed:`, error);
     return [];
   }
 }
@@ -596,6 +737,56 @@ export async function getEPSS(): Promise<IntelResult> {
     if (records.length > 0) {
       saveToCache("epss", records);
     }
+  }
+
+  return {
+    findings: records,
+    cacheAge: age,
+    stale,
+    warn
+  };
+}
+
+/**
+ * Get NVD vulnerabilities (enriched)
+ */
+export async function getNVD(): Promise<IntelResult> {
+  const { stale, age, warn } = isCacheStale("nvd");
+
+  let records = loadFromCache("nvd");
+
+  if (records.length === 0 || stale) {
+    records = await fetchNVD();
+    if (records.length > 0) {
+      saveToCache("nvd", records);
+    }
+  }
+
+  return {
+    findings: records,
+    cacheAge: age,
+    stale,
+    warn
+  };
+}
+
+/**
+ * Get GHSA advisories (enriched)
+ */
+export async function getGHSA(): Promise<IntelResult> {
+  const { stale, age, warn } = isCacheStale("ghsa");
+
+  let records = loadFromCache("ghsa");
+
+  if (records.length === 0 || stale) {
+    // GHSA doesn't have a bulk feed - would need to query per-package
+    // For now, return empty - GHSA integration is via queryGHSA() per-package
+    return {
+      findings: [],
+      cacheAge: age,
+      stale,
+      warn
+    };
   }
 
   return {

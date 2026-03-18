@@ -1,0 +1,50 @@
+name: Update Vulnerability DB
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-db:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # Default to read-only
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: skill-audit/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./skill-audit
+        run: npm ci
+
+      - name: Build
+        working-directory: ./skill-audit
+        run: npm run build
+
+      - name: Update vulnerability feeds
+        working-directory: ./skill-audit
+        run: npm run security:update
+
+      - name: Commit and push if changed
+        run: |
+          # Only push if there are changes and we're on a branch we can push to
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add skill-audit/.cache/
+          git diff --cached --quiet || (
+            git checkout -b bot/cache-update 2>/dev/null || true
+            git commit -m "chore: update vulnerability feeds [skip ci]"
+            git push origin bot/cache-update --force 2>/dev/null || echo "Push skipped (protected branch or no remote)"
+          )

@@ -6,7 +6,7 @@ import { auditSecurity, SecurityAuditResult } from "./security.js";
 import { validateSkillSpec, SpecValidationResult } from "./spec.js";
 import { createGroupedAuditResult } from "./scoring.js";
 import { scanDependencies } from "./deps.js";
-import { getKEV, getEPSS, isCacheStale } from "./intel.js";
+import { getKEV, getEPSS, getNVD, isCacheStale } from "./intel.js";
 import { writeFileSync } from "fs";
 import { Finding, GroupedAuditResult } from "./types.js";
 
@@ -27,7 +27,7 @@ program
   .option("--no-deps", "Skip dependency scanning (faster)")
   .option("--mode <mode>", "Audit mode: 'lint' (spec only) or 'audit' (full)", "audit")
   .option("--update-db", "Update advisory intelligence feeds")
-  .option("--source <sources...>", "Sources for update-db: kev, epss, all", ["all"])
+  .option("--source <sources...>", "Sources for update-db: kev, epss, nvd, all", ["all"])
   .option("--strict", "Fail if feeds are stale")
   .option("--quiet", "Suppress non-error output");
 
@@ -104,7 +104,7 @@ reportGroupedResults(results, {
 });
 
 async function updateAdvisoryDB(opts: { source: string[]; strict: boolean }) {
-  const sources = opts.source.includes("all") ? ["kev", "epss"] : opts.source;
+  const sources = opts.source.includes("all") ? ["kev", "epss", "nvd"] : opts.source;
   const quiet = program.opts().quiet;
 
   if (!quiet) {
@@ -128,6 +128,11 @@ async function updateAdvisoryDB(opts: { source: string[]; strict: boolean }) {
         const result = await getEPSS();
         if (!quiet) {
           console.log(`   ✓ EPSS: ${result.findings.length} scores cached (stale: ${result.stale})`);
+        }
+      } else if (source === "nvd") {
+        const result = await getNVD();
+        if (!quiet) {
+          console.log(`   ✓ NVD: ${result.findings.length} CVEs cached (stale: ${result.stale})`);
         }
       }
     } catch (e) {
@@ -202,8 +207,13 @@ function reportGroupedResults(results: GroupedAuditResult[], options: ReportOpti
   // Check cache freshness and warn if stale
   const kevStale = isCacheStale("kev");
   const epssStale = isCacheStale("epss");
-  if (!options.json && (kevStale.warn || epssStale.warn)) {
-    console.log(`\n⚠️  Vulnerability DB is stale (${kevStale.age?.toFixed(1)} days for KEV, ${epssStale.age?.toFixed(1)} days for EPSS)`);
+  const nvdStale = isCacheStale("nvd");
+  if (!options.json && (kevStale.warn || epssStale.warn || nvdStale.warn)) {
+    const ages = [];
+    if (kevStale.age) ages.push(`${kevStale.age.toFixed(1)} days for KEV`);
+    if (epssStale.age) ages.push(`${epssStale.age.toFixed(1)} days for EPSS`);
+    if (nvdStale.age) ages.push(`${nvdStale.age.toFixed(1)} days for NVD`);
+    console.log(`\n⚠️  Vulnerability DB is stale (${ages.join(", ")})`);
     console.log(`   Run: npx skill-audit --update-db`);
   }
 
