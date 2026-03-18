@@ -10,7 +10,7 @@ jobs:
   update-db:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read   # Default to read-only
     
     steps:
       - name: Checkout
@@ -39,8 +39,12 @@ jobs:
       
       - name: Commit and push if changed
         run: |
+          # Only push if there are changes and we're on a branch we can push to
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add skill-audit/.cache/
-          git diff --cached --quiet || git commit -m "chore: update vulnerability feeds [skip ci]"
-          git push || echo "No changes to push"
+          git diff --cached --quiet || (
+            git checkout -b bot/cache-update 2>/dev/null || true
+            git commit -m "chore: update vulnerability feeds [skip ci]"
+            git push origin bot/cache-update --force 2>/dev/null || echo "Push skipped (protected branch or no remote)"
+          )

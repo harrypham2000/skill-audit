@@ -5,13 +5,14 @@ import { fileURLToPath } from "url";
 // Cache directory - in package root (parent of src)
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CACHE_DIR = join(PACKAGE_ROOT, ".cache/skill-audit/feeds");
+const METRICS_FILE = join(PACKAGE_ROOT, ".cache/skill-audit/metrics.json");
 
 /**
  * Phase 1 - Layer 3: Vulnerability Intelligence Service
- * 
+ *
  * Enriches dependency findings with CVE/GHSA/OSV/KEV/EPSS intelligence.
  * Uses local cache with freshness policy.
- * 
+ *
  * Advisory sources:
  * - OSV: https://osv.dev/vulnerability/ (package-specific)
  * - GHSA: GitHub Advisory Database
@@ -51,9 +52,24 @@ export interface CacheMetadata {
   recordCount: number;
 }
 
-// Cache configuration
-const MAX_CACHE_AGE_DAYS = 7;
+export interface UpdateMetrics {
+  lastUpdate: string;
+  kevCount: number;
+  epssCount: number;
+  fetchDurationMs: number;
+  errors: string[];
+}
+
+// Cache configuration - differentiated by source update frequency
+const MAX_CACHE_AGE_DAYS: Record<string, number> = {
+  kev: 1,   // Daily updates - critical for actively exploited vulns
+  epss: 3,  // Matches FIRST.org update cycle
+  osv: 7    // Stable database - weekly acceptable
+};
 const WARN_CACHE_AGE_DAYS = 3;
+const FETCH_TIMEOUT_MS = 30000; // 30 seconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000; // Base delay for exponential backoff
 
 /**
  * Ensure cache directory exists
@@ -62,6 +78,106 @@ function ensureCacheDir(): void {
   if (!existsSync(CACHE_DIR)) {
     mkdirSync(CACHE_DIR, { recursive: true });
   }
+  // Also ensure parent dir exists for metrics file
+  const metricsDir = dirname(METRICS_FILE);
+  if (!existsSync(metricsDir)) {
+    mkdirSync(metricsDir, { recursive: true });
+  }
+}
+
+/**
+ * Fetch with retry and exponential backoff
+ */
+async function fetchWithRetry(
+  url: string,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+  options: RequestInit = {}
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'skill-audit/0.1.0 (Vulnerability Intelligence Scanner)',
+          ...options.headers
+        }
+      });
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        return response;
+      }
+      
+      console.error(`Fetch failed (${url}): HTTP ${response.status}`);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (attempt === MAX_RETRIES - 1) {
+        throw error; // Last attempt - rethrow
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
+      console.error(`Fetch failed (${url}), retrying in ${delay}ms... (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+
+/**
+ * Load update metrics
+ */
+function loadMetrics(): UpdateMetrics {
+  if (!existsSync(METRICS_FILE)) {
+    return { lastUpdate: '', kevCount: 0, epssCount: 0, fetchDurationMs: 0, errors: [] };
+  }
+  try {
+    return JSON.parse(readFileSync(METRICS_FILE, 'utf-8')) as UpdateMetrics;
+  } catch {
+    return { lastUpdate: '', kevCount: 0, epssCount: 0, fetchDurationMs: 0, errors: [] };
+  }
+}
+
+/**
+ * Save update metrics
+ */
+function saveMetrics(metrics: UpdateMetrics): void {
+  try {
+    writeFileSync(METRICS_FILE, JSON.stringify(metrics, null, 2));
+  } catch (error) {
+    console.error('Failed to save metrics:', error);
+  }
+}
+
+/**
+ * Record fetch result in metrics
+ */
+function recordFetchResult(source: string, count: number, durationMs: number, error?: string): void {
+  const metrics = loadMetrics();
+  metrics.lastUpdate = new Date().toISOString();
+  metrics.fetchDurationMs += durationMs;
+  
+  if (source === 'kev') {
+    metrics.kevCount = count;
+  } else if (source === 'epss') {
+    metrics.epssCount = count;
+  }
+  
+  if (error) {
+    metrics.errors.push(`${source}: ${error}`);
+    // Keep only last 10 errors
+    if (metrics.errors.length > 10) {
+      metrics.errors = metrics.errors.slice(-10);
+    }
+  }
+  
+  saveMetrics(metrics);
 }
 
 /**
@@ -97,8 +213,11 @@ export function isCacheStale(source: string): { stale: boolean; age?: number; wa
     const ageMs = now.getTime() - fetchedAt.getTime();
     const ageDays = ageMs / (1000 * 60 * 60 * 24);
 
+    // Use source-specific max age
+    const maxAge = MAX_CACHE_AGE_DAYS[source.toLowerCase()] || MAX_CACHE_AGE_DAYS.osv;
+
     return { 
-      stale: ageDays > MAX_CACHE_AGE_DAYS, 
+      stale: ageDays > maxAge, 
       age: ageDays,
       warn: ageDays > WARN_CACHE_AGE_DAYS
     };
@@ -151,7 +270,7 @@ function loadFromCache(source: string): AdvisoryRecord[] {
  */
 export async function queryOSV(ecosystem: string, packageName: string): Promise<AdvisoryRecord[]> {
   try {
-    const response = await fetch('https://api.osv.dev/v1/query', {
+    const response = await fetchWithRetry('https://api.osv.dev/v1/query', FETCH_TIMEOUT_MS, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -233,14 +352,11 @@ export async function queryGHSA(ecosystem: string, packageName: string): Promise
  * Fetch CISA KEV (Known Exploited Vulnerabilities)
  */
 export async function fetchKEV(): Promise<AdvisoryRecord[]> {
+  const startTime = Date.now();
+  const url = 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json';
+  
   try {
-    const response = await fetch('https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json');
-    
-    if (!response.ok) {
-      console.error(`KEV fetch error: ${response.status}`);
-      return [];
-    }
-
+    const response = await fetchWithRetry(url);
     const data = await response.json() as {
       title?: string;
       catalogVersion?: string;
@@ -258,10 +374,11 @@ export async function fetchKEV(): Promise<AdvisoryRecord[]> {
     };
 
     if (!data.vulnerabilities) {
+      recordFetchResult('kev', 0, Date.now() - startTime, 'No vulnerabilities in response');
       return [];
     }
 
-    return data.vulnerabilities.map(v => ({
+    const records = data.vulnerabilities.map(v => ({
       id: v.cveID,
       aliases: [v.cveID],
       source: "KEV" as const,
@@ -270,7 +387,12 @@ export async function fetchKEV(): Promise<AdvisoryRecord[]> {
       summary: v.shortDescription,
       references: v.reference ? [v.reference] : []
     }));
+
+    recordFetchResult('kev', records.length, Date.now() - startTime);
+    return records;
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    recordFetchResult('kev', 0, Date.now() - startTime, errorMsg);
     console.error(`KEV fetch failed:`, error);
     return [];
   }
@@ -280,20 +402,14 @@ export async function fetchKEV(): Promise<AdvisoryRecord[]> {
  * Fetch EPSS scores
  */
 export async function fetchEPSS(): Promise<AdvisoryRecord[]> {
+  const startTime = Date.now();
+  const url = 'https://api.first.org/data/v1/epss?limit=500&sort=epss';
+  
   try {
-    // Official FIRST.org EPSS API (beta) - get top 500 by EPSS score
-    const url = 'https://api.first.org/data/v1/epss?limit=500&sort=epss';
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      console.error(`EPSS fetch error: ${response.status}`);
-      return [];
-    }
-
-    // Parse JSON response
-    const data = await response.json() as { 
-      status: string; 
-      total: number; 
+    const response = await fetchWithRetry(url);
+    const data = await response.json() as {
+      status: string;
+      total: number;
       limit: number;
       data: Array<{
         cve: string;
@@ -304,6 +420,7 @@ export async function fetchEPSS(): Promise<AdvisoryRecord[]> {
     };
 
     if (!data.data) {
+      recordFetchResult('epss', 0, Date.now() - startTime, 'No data in response');
       return [];
     }
 
@@ -316,8 +433,11 @@ export async function fetchEPSS(): Promise<AdvisoryRecord[]> {
       references: []
     }));
 
+    recordFetchResult('epss', records.length, Date.now() - startTime);
     return records;
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    recordFetchResult('epss', 0, Date.now() - startTime, errorMsg);
     console.error(`EPSS fetch failed:`, error);
     return [];
   }

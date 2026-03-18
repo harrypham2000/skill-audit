@@ -4,15 +4,45 @@
   "description": "Security auditing CLI for AI agent skills",
   "type": "module",
   "bin": {
-    "skills-audit": "./dist/index.js"
+    "skill-audit": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "postinstall": "node dist/index.js --update-db --quiet || true",
+    "postinstall": "node dist/index.js --update-db --quiet 2>/dev/null || echo \"⚠️  Vulnerability DB update skipped (run 'npm run security:update' later)\"",
     "security:update": "node dist/index.js --update-db"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SKILL.md"
+  ],
+  "keywords": [
+    "security",
+    "audit",
+    "cli",
+    "ai",
+    "agent",
+    "skills",
+    "vulnerability",
+    "owasp",
+    "prompt-injection",
+    "llm-security"
+  ],
+  "author": "Hung Pham",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harrypham2000/skill-audit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/harrypham2000/skill-audit/issues"
+  },
+  "homepage": "https://github.com/harrypham2000/skill-audit#readme",
   "dependencies": {
     "commander": "^11.1.0",
     "gray-matter": "^4.0.3",
