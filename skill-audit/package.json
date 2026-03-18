@@ -1,0 +1,24 @@
+{
+  "name": "skill-audit",
+  "version": "0.1.0",
+  "description": "Security auditing CLI for AI agent skills",
+  "type": "module",
+  "bin": {
+    "skills-audit": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "gray-matter": "^4.0.3",
+    "semver": "^7.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
