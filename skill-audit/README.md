@@ -82,6 +82,23 @@ npx skill-audit --mode lint
 - **ASI04** - Supply Chain Vulnerabilities (secrets, deps)
 - **ASI05** - Unexpected Code Execution (dangerous scripts)
 
+## Vulnerability Intelligence
+
+Feeds are cached locally with automatic freshness checks:
+
+| Source | Update Frequency | Cache Lifetime |
+|--------|------------------|----------------|
+| CISA KEV | Daily | 7 days |
+| FIRST EPSS | Daily | 7 days |
+| OSV.dev | On-query | 7 days |
+
+**Automatic updates:**
+- Runs on `npm install` via `postinstall` hook
+- Daily GitHub Actions workflow (public repos)
+- Manual: `npx skill-audit --update-db`
+
+**Stale cache warning:** Audit output warns if feeds are >3 days old.
+
 ## Trust Sources
 
 1. Static pattern matching for known attack vectors
@@ -98,6 +115,10 @@ npx skill-audit --mode lint
 
 **False positives**: Review finding at file:line, add inline comment explaining legitimate use
 
-**Stale CVEs**: Run `npx skill-audit --update-db` to refresh KEV/EPSS/OSV feeds
+**Stale DB warning**: Run `npx skill-audit --update-db` to refresh KEV/EPSS/OSV feeds
 
 **Skill not found**: Verify `SKILL.md` exists in root or `skills/` directory
+
+**postinstall update fails**: The `--quiet || true` flags ensure install continues even if update fails. Run manually later.
+
+**Offline mode**: Cached feeds work offline. Re-run audit with existing cache.

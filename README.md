@@ -114,6 +114,28 @@ Enriched with real-time threat data from:
 - **FIRST EPSS** — Exploit Prediction Scoring System (3-day updates)
 - **OSV.dev** — Open Source Vulnerabilities database
 
+### Automatic Updates
+
+The vulnerability database updates automatically:
+
+1. **On install** - `postinstall` hook fetches latest KEV/EPSS feeds
+2. **Daily** - GitHub Actions workflow keeps cache fresh (public repos)
+3. **Manual** - Run `npx skill-audit --update-db` anytime
+
+⚠️ **Stale cache warning**: If feeds are >3 days old, audit output will warn you to update.
+
+### Manual Cron Setup (Enterprise)
+
+For environments without GitHub Actions:
+
+```bash
+# Daily update at 2 AM (Linux/macOS)
+0 2 * * * cd /path/to/skill-audit && npx skill-audit --update-db --quiet
+
+# Windows Task Scheduler
+schtasks /create /tn "skill-audit-update" /tr "npx skill-audit --update-db" /sc daily /st 02:00
+```
+
 ## Use Cases
 
 ### For Skill Authors

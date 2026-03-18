@@ -40,6 +40,7 @@ export interface IntelResult {
   findings: AdvisoryRecord[];
   cacheAge?: number;
   stale?: boolean;
+  warn?: boolean;
 }
 
 export interface CacheMetadata {
@@ -52,6 +53,7 @@ export interface CacheMetadata {
 
 // Cache configuration
 const MAX_CACHE_AGE_DAYS = 7;
+const WARN_CACHE_AGE_DAYS = 3;
 
 /**
  * Ensure cache directory exists
@@ -79,13 +81,13 @@ function getMetaPath(source: string): string {
 }
 
 /**
- * Check if cache is stale
+ * Check if cache is stale and return age info
  */
-function isCacheStale(source: string): { stale: boolean; age?: number } {
+export function isCacheStale(source: string): { stale: boolean; age?: number; warn: boolean } {
   const metaPath = getMetaPath(source);
-  
+
   if (!existsSync(metaPath)) {
-    return { stale: true };
+    return { stale: true, warn: false };
   }
 
   try {
@@ -95,9 +97,13 @@ function isCacheStale(source: string): { stale: boolean; age?: number } {
     const ageMs = now.getTime() - fetchedAt.getTime();
     const ageDays = ageMs / (1000 * 60 * 60 * 24);
 
-    return { stale: ageDays > MAX_CACHE_AGE_DAYS, age: ageDays };
+    return { 
+      stale: ageDays > MAX_CACHE_AGE_DAYS, 
+      age: ageDays,
+      warn: ageDays > WARN_CACHE_AGE_DAYS
+    };
   } catch {
-    return { stale: true };
+    return { stale: true, warn: false };
   }
 }
 
@@ -345,10 +351,10 @@ export async function queryIntel(ecosystem: string, packageName: string): Promis
  * Get KEV vulnerabilities (enriched)
  */
 export async function getKEV(): Promise<IntelResult> {
-  const { stale, age } = isCacheStale("kev");
-  
+  const { stale, age, warn } = isCacheStale("kev");
+
   let records = loadFromCache("kev");
-  
+
   if (records.length === 0 || stale) {
     records = await fetchKEV();
     if (records.length > 0) {
@@ -359,7 +365,8 @@ export async function getKEV(): Promise<IntelResult> {
   return {
     findings: records,
     cacheAge: age,
-    stale
+    stale,
+    warn
   };
 }
 
@@ -367,10 +374,10 @@ export async function getKEV(): Promise<IntelResult> {
  * Get EPSS scores (enriched)
  */
 export async function getEPSS(): Promise<IntelResult> {
-  const { stale, age } = isCacheStale("epss");
-  
+  const { stale, age, warn } = isCacheStale("epss");
+
   let records = loadFromCache("epss");
-  
+
   if (records.length === 0 || stale) {
     records = await fetchEPSS();
     if (records.length > 0) {
@@ -381,7 +388,8 @@ export async function getEPSS(): Promise<IntelResult> {
   return {
     findings: records,
     cacheAge: age,
-    stale
+    stale,
+    warn
   };
 }
 

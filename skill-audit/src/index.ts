@@ -6,7 +6,7 @@ import { auditSecurity, SecurityAuditResult } from "./security.js";
 import { validateSkillSpec, SpecValidationResult } from "./spec.js";
 import { createGroupedAuditResult } from "./scoring.js";
 import { scanDependencies } from "./deps.js";
-import { getKEV, getEPSS } from "./intel.js";
+import { getKEV, getEPSS, isCacheStale } from "./intel.js";
 import { writeFileSync } from "fs";
 import { Finding, GroupedAuditResult } from "./types.js";
 
@@ -28,7 +28,8 @@ program
   .option("--mode <mode>", "Audit mode: 'lint' (spec only) or 'audit' (full)", "audit")
   .option("--update-db", "Update advisory intelligence feeds")
   .option("--source <sources...>", "Sources for update-db: kev, epss, all", ["all"])
-  .option("--strict", "Fail if feeds are stale");
+  .option("--strict", "Fail if feeds are stale")
+  .option("--quiet", "Suppress non-error output");
 
 program.parse(process.argv);
 
@@ -104,26 +105,44 @@ reportGroupedResults(results, {
 
 async function updateAdvisoryDB(opts: { source: string[]; strict: boolean }) {
   const sources = opts.source.includes("all") ? ["kev", "epss"] : opts.source;
-  
-  console.log("📥 Updating advisory intelligence feeds...\n");
+  const quiet = program.opts().quiet;
+
+  if (!quiet) {
+    console.log("📥 Updating advisory intelligence feeds...\n");
+  }
+
+  let hasErrors = false;
 
   for (const source of sources) {
-    console.log(`Fetching ${source.toUpperCase()}...`);
-    
+    if (!quiet) {
+      console.log(`Fetching ${source.toUpperCase()}...`);
+    }
+
     try {
       if (source === "kev") {
         const result = await getKEV();
-        console.log(`   ✓ CISA KEV: ${result.findings.length} vulnerabilities cached (stale: ${result.stale})`);
+        if (!quiet) {
+          console.log(`   ✓ CISA KEV: ${result.findings.length} vulnerabilities cached (stale: ${result.stale})`);
+        }
       } else if (source === "epss") {
         const result = await getEPSS();
-        console.log(`   ✓ EPSS: ${result.findings.length} scores cached (stale: ${result.stale})`);
+        if (!quiet) {
+          console.log(`   ✓ EPSS: ${result.findings.length} scores cached (stale: ${result.stale})`);
+        }
       }
     } catch (e) {
       console.error(`   ✗ Failed to fetch ${source}:`, e);
+      hasErrors = true;
     }
   }
 
-  console.log("\n✅ Advisory DB updated");
+  if (!quiet) {
+    console.log("\n✅ Advisory DB updated");
+  }
+
+  if (opts.strict && hasErrors) {
+    process.exit(1);
+  }
 }
 
 interface ReportOptions {
@@ -179,6 +198,14 @@ function reportGroupedResults(results: GroupedAuditResult[], options: ReportOpti
   console.log(`\n📊 Summary (${mode} mode):`);
   console.log(`   Safe: ${safeCount} | Risky: ${riskyCount} | Dangerous: ${dangerousCount} | Malicious: ${maliciousCount}`);
   console.log(`   Skills with spec issues: ${specErrors} | Security issues: ${securityIssues}`);
+
+  // Check cache freshness and warn if stale
+  const kevStale = isCacheStale("kev");
+  const epssStale = isCacheStale("epss");
+  if (!options.json && (kevStale.warn || epssStale.warn)) {
+    console.log(`\n⚠️  Vulnerability DB is stale (${kevStale.age?.toFixed(1)} days for KEV, ${epssStale.age?.toFixed(1)} days for EPSS)`);
+    console.log(`   Run: npx skill-audit --update-db`);
+  }
 
   if (threshold !== undefined) {
     const failing = results.filter(r => r.riskScore > threshold);
