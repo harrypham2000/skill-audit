@@ -1,0 +1,22 @@
+# Agent framework metadata
+.serena/
+.bg-shell/
+.gsd/
+
+# Documentation (non-essential)
+AI Agent Skill Security Auditing Plan for the Vercel Skills Ecosystem.md
+
+# skill-audit package (npm)
+skill-audit/node_modules/
+skill-audit/dist/
+skill-audit/.cache/
+skill-audit/package-lock.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

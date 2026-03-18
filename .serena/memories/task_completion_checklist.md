@@ -1,1 +1,0 @@
-After changes in `skill-audit/`, at minimum run `npm run build`. There is no configured test, lint, or format command yet, so manual review is currently required. A key known issue: the current codebase does not build cleanly because `src/index.ts` has implicit `any[]` inference for `depFindings` under strict TypeScript.
