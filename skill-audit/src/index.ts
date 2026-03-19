@@ -6,7 +6,7 @@ import { auditSecurity, SecurityAuditResult } from "./security.js";
 import { validateSkillSpec, SpecValidationResult } from "./spec.js";
 import { createGroupedAuditResult } from "./scoring.js";
 import { scanDependencies } from "./deps.js";
-import { getKEV, getEPSS, getNVD, isCacheStale } from "./intel.js";
+import { getKEV, getEPSS, getNVD, isCacheStale, downloadOfflineDB } from "./intel.js";
 import { writeFileSync } from "fs";
 import { Finding, GroupedAuditResult } from "./types.js";
 
@@ -14,7 +14,7 @@ import { Finding, GroupedAuditResult } from "./types.js";
 const program = new Command();
 
 program
-  .name("skills-audit")
+  .name("skill-audit")
   .description("Security auditing CLI for AI agent skills")
   .version("0.1.0")
   .option("-g, --global", "Audit global skills only (default: true)")
@@ -29,11 +29,18 @@ program
   .option("--update-db", "Update advisory intelligence feeds")
   .option("--source <sources...>", "Sources for update-db: kev, epss, nvd, all", ["all"])
   .option("--strict", "Fail if feeds are stale")
-  .option("--quiet", "Suppress non-error output");
+  .option("--quiet", "Suppress non-error output")
+  .option("--download-offline-db <dir>", "Download offline vulnerability databases to directory");
 
 program.parse(process.argv);
 
 const options = program.opts();
+
+// Handle download-offline-db action
+if (options.downloadOfflineDb) {
+  await downloadOfflineDB(options.downloadOfflineDb);
+  process.exit(0);
+}
 
 // Handle update-db action
 if (options.updateDb) {

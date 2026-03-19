@@ -834,14 +834,89 @@ export function prioritizeRecords(records: AdvisoryRecord[]): AdvisoryRecord[] {
   return [...records].sort((a, b) => {
     const aP = sourcePriority[a.source] || 10;
     const bP = sourcePriority[b.source] || 10;
-    
+
     if (aP !== bP) return aP - bP;
-    
+
     // Secondary: EPSS score (higher is worse)
     if (a.epss !== undefined && b.epss !== undefined) {
       return b.epss - a.epss;
     }
-    
+
     return 0;
   });
+}
+
+/**
+ * Download offline vulnerability databases
+ * @param outputDir - Directory to save offline databases
+ * @returns Object with download statistics
+ */
+export async function downloadOfflineDB(outputDir: string): Promise<{
+  kev: { success: boolean; count: number };
+  epss: { success: boolean; count: number };
+  osv: { success: boolean; message: string };
+}> {
+  const results = {
+    kev: { success: false, count: 0 },
+    epss: { success: false, count: 0 },
+    osv: { success: false, message: '' }
+  };
+
+  try {
+    // Ensure output directory exists
+    if (!existsSync(outputDir)) {
+      mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Download KEV
+    console.log('📥 Downloading CISA KEV...');
+    const kevRecords = await fetchKEV();
+    if (kevRecords.length > 0) {
+      writeFileSync(
+        join(outputDir, 'kev.json'),
+        JSON.stringify({ fetchedAt: new Date().toISOString(), records: kevRecords }, null, 2)
+      );
+      results.kev = { success: true, count: kevRecords.length };
+      console.log(`   ✓ KEV: ${kevRecords.length} vulnerabilities`);
+    }
+
+    // Download EPSS
+    console.log('📥 Downloading EPSS scores...');
+    const epssRecords = await fetchEPSS();
+    if (epssRecords.length > 0) {
+      writeFileSync(
+        join(outputDir, 'epss.json'),
+        JSON.stringify({ fetchedAt: new Date().toISOString(), records: epssRecords }, null, 2)
+      );
+      results.epss = { success: true, count: epssRecords.length };
+      console.log(`   ✓ EPSS: ${epssRecords.length} scores`);
+    }
+
+    // Note: OSV is query-based, not a bulk download
+    // Users would need to query OSV API per-package
+    results.osv = {
+      success: true,
+      message: 'OSV uses on-demand API queries (not bulk download). Use OSV CLI for offline scanning.'
+    };
+    console.log('   ℹ️  OSV: Query-based API (use --update-db for caching)');
+
+    // Save metadata
+    const metadata = {
+      downloadedAt: new Date().toISOString(),
+      sources: results,
+      cacheAges: {
+        kev: MAX_CACHE_AGE_DAYS.kev,
+        epss: MAX_CACHE_AGE_DAYS.epss,
+        osv: MAX_CACHE_AGE_DAYS.osv
+      }
+    };
+    writeFileSync(join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+
+    console.log('\n✅ Offline databases downloaded to:', outputDir);
+  } catch (error) {
+    console.error('❌ Download failed:', error);
+    results.osv.message = error instanceof Error ? error.message : 'Download error';
+  }
+
+  return results;
 }

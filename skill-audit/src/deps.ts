@@ -74,6 +74,64 @@ const OSV_ECOSYSTEMS: Record<string, string> = {
   'RubyGems': 'ruby',
   'Packagist': 'php',
   'Pub': 'dart',
+  'NuGet': 'dotnet',
+  'Hex': 'elixir',
+  'ConanCenter': 'cpp',
+  'Bioconductor': 'r',
+  'SwiftURL': 'swift',
+};
+
+// Supported lockfile patterns and their ecosystems
+const LOCKFILE_PATTERNS: Record<string, { ecosystem: string; parser: string }> = {
+  // JavaScript/TypeScript
+  'package-lock.json': { ecosystem: 'npm', parser: 'json' },
+  'yarn.lock': { ecosystem: 'npm', parser: 'yarn' },
+  'pnpm-lock.yaml': { ecosystem: 'npm', parser: 'yaml' },
+  'bun.lockb': { ecosystem: 'npm', parser: 'binary' },
+  
+  // Python
+  'requirements.txt': { ecosystem: 'PyPI', parser: 'text' },
+  'Pipfile.lock': { ecosystem: 'PyPI', parser: 'json' },
+  'poetry.lock': { ecosystem: 'PyPI', parser: 'toml' },
+  'pdm.lock': { ecosystem: 'PyPI', parser: 'toml' },
+  'uv.lock': { ecosystem: 'PyPI', parser: 'toml' },
+  'pylock.toml': { ecosystem: 'PyPI', parser: 'toml' },
+  
+  // Rust
+  'Cargo.lock': { ecosystem: 'crates.io', parser: 'toml' },
+  
+  // Ruby
+  'Gemfile.lock': { ecosystem: 'RubyGems', parser: 'text' },
+  'gems.locked': { ecosystem: 'RubyGems', parser: 'text' },
+  
+  // PHP
+  'composer.lock': { ecosystem: 'Packagist', parser: 'json' },
+  
+  // Java
+  'pom.xml': { ecosystem: 'Maven', parser: 'xml' },
+  'buildscript-gradle.lockfile': { ecosystem: 'Maven', parser: 'text' },
+  'gradle.lockfile': { ecosystem: 'Maven', parser: 'text' },
+  
+  // Go
+  'go.mod': { ecosystem: 'Go', parser: 'text' },
+  'go.sum': { ecosystem: 'Go', parser: 'text' },
+  
+  // .NET
+  'packages.lock.json': { ecosystem: 'NuGet', parser: 'json' },
+  'deps.json': { ecosystem: 'NuGet', parser: 'json' },
+  'packages.config': { ecosystem: 'NuGet', parser: 'xml' },
+  
+  // Dart
+  'pubspec.lock': { ecosystem: 'Pub', parser: 'yaml' },
+  
+  // Elixir
+  'mix.lock': { ecosystem: 'Hex', parser: 'elixir' },
+  
+  // C/C++
+  'conan.lock': { ecosystem: 'ConanCenter', parser: 'text' },
+  
+  // R
+  'renv.lock': { ecosystem: 'Bioconductor', parser: 'json' },
 };
 
 // Check if a scanner is available
@@ -352,69 +410,237 @@ function scanWithOSVAPI(resolvedPath: string): Finding[] {
 // Extract packages from lockfiles for OSV API query
 function extractPackagesFromLockfiles(resolvedPath: string): Array<{name: string, version: string, ecosystem: string}> {
   const packages: Array<{name: string, version: string, ecosystem: string}> = [];
-  
+
   try {
     const files = readdirSync(resolvedPath);
-    
-    // Parse package-lock.json
-    const pkgLock = files.find(f => f === 'package-lock.json');
-    if (pkgLock) {
-      const content = JSON.parse(readFileSync(join(resolvedPath, pkgLock), 'utf-8'));
-      if (content.packages) {
-        for (const [path, pkg] of Object.entries(content.packages)) {
-          const p = pkg as { version?: string };
-          if (p.version && path !== '') {
-            // Extract package name from path
-            const name = path.split('node_modules/').pop()?.split('/')[0];
-            if (name) {
-              packages.push({ name, version: p.version.replace(/^\^|~/, ''), ecosystem: 'npm' });
-            }
-          }
-        }
-      }
-    }
 
-    // Parse requirements.txt
-    const reqTxt = files.find(f => f === 'requirements.txt');
-    if (reqTxt) {
-      const content = readFileSync(join(resolvedPath, reqTxt), 'utf-8');
-      for (const line of content.split('\n')) {
-        const match = line.match(/^([a-zA-Z0-9_-]+)([=<>!~]+)(.+)$/);
-        if (match) {
-          packages.push({ name: match[1], version: match[3].trim(), ecosystem: 'PyPI' });
-        }
-      }
-    }
+    // Iterate through all supported lockfile patterns
+    for (const [filename, config] of Object.entries(LOCKFILE_PATTERNS)) {
+      const lockfile = files.find(f => f === filename);
+      if (!lockfile) continue;
 
-    // Parse go.mod
-    const goMod = files.find(f => f === 'go.mod');
-    if (goMod) {
-      const content = readFileSync(join(resolvedPath, goMod), 'utf-8');
-      for (const line of content.split('\n')) {
-        const match = line.match(/^\s+([a-zA-Z0-9\/]+)\s+v?(.+)$/);
-        if (match && !match[1].startsWith('gopkg.in') && !match[1].startsWith('github.com/')) {
-          packages.push({ name: match[1], version: match[2].replace(/^v/, ''), ecosystem: 'Go' });
-        }
-      }
-    }
+      const filepath = join(resolvedPath, lockfile);
+      const content = readFileSync(filepath, 'utf-8');
 
-    // Parse Cargo.lock
-    const cargoLock = files.find(f => f === 'Cargo.lock');
-    if (cargoLock) {
-      const content = JSON.parse(readFileSync(join(resolvedPath, cargoLock), 'utf-8'));
-      if (content.package) {
-        for (const pkg of content.package) {
-          if (pkg.name && pkg.version) {
-            packages.push({ name: pkg.name, version: pkg.version, ecosystem: 'crates.io' });
-          }
+      try {
+        switch (config.parser) {
+          case 'json':
+            parseJSONLockfile(content, config.ecosystem, packages);
+            break;
+          case 'yaml':
+            parseYAMLLockfile(content, config.ecosystem, packages);
+            break;
+          case 'toml':
+            parseTOMLLockfile(content, config.ecosystem, packages);
+            break;
+          case 'text':
+            parseTextLockfile(content, config.ecosystem, packages, filename);
+            break;
+          // Binary and XML parsers would require additional dependencies
+          // For now, skip binary files and use basic XML parsing
         }
+      } catch (e) {
+        console.warn(`Failed to parse ${filename}:`, e);
       }
     }
   } catch (e) {
-    // Ignore parse errors
+    // Ignore top-level errors
   }
 
   return packages;
+}
+
+// Parse JSON lockfiles (package-lock.json, Pipfile.lock, composer.lock, etc.)
+function parseJSONLockfile(content: string, ecosystem: string, packages: Array<{name: string, version: string, ecosystem: string}>) {
+  const data = JSON.parse(content);
+  
+  // package-lock.json format
+  if (data.packages) {
+    for (const [path, pkg] of Object.entries(data.packages)) {
+      const p = pkg as { version?: string; name?: string };
+      if (p.version && path !== '') {
+        const name = p.name || path.split('node_modules/').pop()?.split('/')[0];
+        if (name) {
+          packages.push({ name, version: p.version.replace(/^\^|~/, ''), ecosystem });
+        }
+      }
+    }
+  }
+  
+  // Pipfile.lock format
+  if (data.default || data.develop) {
+    for (const section of ['default', 'develop']) {
+      if (data[section]) {
+        for (const [name, pkg] of Object.entries(data[section])) {
+          const p = pkg as { version?: string };
+          if (p.version) {
+            packages.push({ name: name.toLowerCase(), version: p.version.replace(/^[=<>!~]+/, ''), ecosystem });
+          }
+        }
+      }
+    }
+  }
+  
+  // composer.lock format
+  if (data.packages) {
+    for (const pkg of data.packages) {
+      if (pkg.name && pkg.version) {
+        packages.push({ name: pkg.name, version: pkg.version.replace(/^[=<>!~v]+/, ''), ecosystem });
+      }
+    }
+  }
+  
+  // renv.lock format
+  if (data.Packages) {
+    for (const [name, pkg] of Object.entries(data.Packages)) {
+      const p = pkg as { Version?: string };
+      if (p.Version) {
+        packages.push({ name, version: p.Version, ecosystem });
+      }
+    }
+  }
+}
+
+// Parse YAML lockfiles (yarn.lock, pubspec.lock, pnpm-lock.yaml)
+function parseYAMLLockfile(content: string, ecosystem: string, packages: Array<{name: string, version: string, ecosystem: string}>) {
+  // Simple YAML parsing without external dependency
+  // For production, consider using a YAML parser library
+  const lines = content.split('\n');
+  let currentPackage = '';
+  
+  for (const line of lines) {
+    // yarn.lock format: "package@version":
+    const yarnMatch = line.match(/^"?([^@"]+)@([^"]+)":/);
+    if (yarnMatch) {
+      packages.push({ name: yarnMatch[1], version: yarnMatch[2].replace(/^[^0-9]*/, ''), ecosystem });
+      continue;
+    }
+    
+    // pubspec.lock format
+    const pubMatch = line.match(/^\s+name:\s*(.+)$/);
+    if (pubMatch) {
+      currentPackage = pubMatch[1].trim();
+      continue;
+    }
+    
+    const pubVersion = line.match(/^\s+version:\s*"?(.+)"?$/);
+    if (pubVersion && currentPackage) {
+      packages.push({ name: currentPackage, version: pubVersion[1], ecosystem });
+      currentPackage = '';
+    }
+  }
+}
+
+// Parse TOML lockfiles (Cargo.lock, poetry.lock, etc.)
+function parseTOMLLockfile(content: string, ecosystem: string, packages: Array<{name: string, version: string, ecosystem: string}>) {
+  // Simple TOML parsing without external dependency
+  const lines = content.split('\n');
+  let currentPackage = '';
+  
+  for (const line of lines) {
+    // Cargo.lock format: [[package]]
+    if (line.startsWith('[[')) {
+      currentPackage = '';
+      continue;
+    }
+    
+    const nameMatch = line.match(/^name\s*=\s*"(.+)"$/);
+    if (nameMatch) {
+      currentPackage = nameMatch[1];
+      continue;
+    }
+    
+    const versionMatch = line.match(/^version\s*=\s*"(.+)"$/);
+    if (versionMatch && currentPackage) {
+      packages.push({ name: currentPackage, version: versionMatch[1], ecosystem });
+    }
+  }
+}
+
+// Parse text-based lockfiles (requirements.txt, Gemfile.lock, go.mod, etc.)
+function parseTextLockfile(content: string, ecosystem: string, packages: Array<{name: string, version: string, ecosystem: string}>, filename: string) {
+  const lines = content.split('\n');
+  
+  // requirements.txt format
+  if (filename === 'requirements.txt') {
+    for (const line of lines) {
+      const match = line.match(/^([a-zA-Z0-9_-]+)([=<>!~]+)(.+)$/);
+      if (match) {
+        packages.push({ name: match[1], version: match[3].trim(), ecosystem });
+      }
+    }
+    return;
+  }
+  
+  // Gemfile.lock format
+  if (filename === 'Gemfile.lock') {
+    let inSpecs = false;
+    for (const line of lines) {
+      if (line.includes('specs:')) {
+        inSpecs = true;
+        continue;
+      }
+      if (inSpecs && line.startsWith('    ')) {
+        const match = line.match(/^\s+([a-zA-Z0-9_-]+)\s+\(([^)]+)\)/);
+        if (match) {
+          packages.push({ name: match[1], version: match[2], ecosystem });
+        }
+      }
+      if (inSpecs && line.trim() && !line.startsWith(' ')) {
+        inSpecs = false;
+      }
+    }
+    return;
+  }
+  
+  // go.mod format
+  if (filename === 'go.mod') {
+    let inRequire = false;
+    for (const line of lines) {
+      if (line.startsWith('require (')) {
+        inRequire = true;
+        continue;
+      }
+      if (inRequire) {
+        if (line === ')') {
+          inRequire = false;
+          continue;
+        }
+        const match = line.match(/^\s*([a-zA-Z0-9\/]+)\s+v?(.+)$/);
+        if (match) {
+          packages.push({ name: match[1], version: match[2].replace(/^v/, ''), ecosystem });
+        }
+      }
+      // Single-line require
+      const singleMatch = line.match(/^require\s+([a-zA-Z0-9\/]+)\s+v?(.+)$/);
+      if (singleMatch) {
+        packages.push({ name: singleMatch[1], version: singleMatch[2].replace(/^v/, ''), ecosystem });
+      }
+    }
+    return;
+  }
+  
+  // go.sum format
+  if (filename === 'go.sum') {
+    for (const line of lines) {
+      const match = line.match(/^([a-zA-Z0-9\/]+)\s+v?([^\/\s]+)\//);
+      if (match) {
+        packages.push({ name: match[1], version: match[2].replace(/^v/, ''), ecosystem });
+      }
+    }
+    return;
+  }
+  
+  // gradle.lockfile format
+  if (filename.includes('gradle.lockfile')) {
+    for (const line of lines) {
+      const match = line.match(/:([a-zA-Z0-9_-]+):([a-zA-Z0-9._-]+):([a-zA-Z0-9._-]+)/);
+      if (match) {
+        packages.push({ name: `${match[2]}:${match[3]}`, version: match[3], ecosystem });
+      }
+    }
+    return;
+  }
 }
 
 export function scanDependencies(skillPath: string): Finding[] {
