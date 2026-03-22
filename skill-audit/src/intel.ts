@@ -78,6 +78,22 @@ const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000; // Base delay for exponential backoff
 
+// Map internal ecosystem names to GitHub GraphQL enum values
+const GHSA_ECOSYSTEM_MAP: Record<string, string> = {
+  'npm': 'NPM',
+  'PyPI': 'PIP',
+  'pypi': 'PIP',
+  'crates.io': 'RUST',
+  'RubyGems': 'RUBYGEMS',
+  'Maven': 'MAVEN',
+  'Packagist': 'COMPOSER',
+  'Go': 'GO',
+  'NuGet': 'NUGET',
+  'Pub': 'PUB',
+  'Hex': 'ERLANG',
+  'SwiftURL': 'SWIFT',
+};
+
 /**
  * Ensure cache directory exists
  */
@@ -399,7 +415,7 @@ export async function queryGHSA(ecosystem: string, packageName: string): Promise
           }
         `,
         variables: {
-          ecosystem: ecosystem.toUpperCase(),
+          ecosystem: GHSA_ECOSYSTEM_MAP[ecosystem] || ecosystem.toUpperCase(),
           package: packageName
         }
       })
@@ -854,11 +870,13 @@ export function prioritizeRecords(records: AdvisoryRecord[]): AdvisoryRecord[] {
 export async function downloadOfflineDB(outputDir: string): Promise<{
   kev: { success: boolean; count: number };
   epss: { success: boolean; count: number };
+  nvd: { success: boolean; count: number };
   osv: { success: boolean; message: string };
 }> {
   const results = {
     kev: { success: false, count: 0 },
     epss: { success: false, count: 0 },
+    nvd: { success: false, count: 0 },
     osv: { success: false, message: '' }
   };
 
@@ -892,6 +910,18 @@ export async function downloadOfflineDB(outputDir: string): Promise<{
       console.log(`   ✓ EPSS: ${epssRecords.length} scores`);
     }
 
+    // Download NVD
+    console.log('📥 Downloading NIST NVD...');
+    const nvdRecords = await fetchNVD();
+    if (nvdRecords.length > 0) {
+      writeFileSync(
+        join(outputDir, 'nvd.json'),
+        JSON.stringify({ fetchedAt: new Date().toISOString(), records: nvdRecords }, null, 2)
+      );
+      results.nvd = { success: true, count: nvdRecords.length };
+      console.log(`   ✓ NVD: ${nvdRecords.length} CVEs`);
+    }
+
     // Note: OSV is query-based, not a bulk download
     // Users would need to query OSV API per-package
     results.osv = {
@@ -907,6 +937,7 @@ export async function downloadOfflineDB(outputDir: string): Promise<{
       cacheAges: {
         kev: MAX_CACHE_AGE_DAYS.kev,
         epss: MAX_CACHE_AGE_DAYS.epss,
+        nvd: MAX_CACHE_AGE_DAYS.nvd,
         osv: MAX_CACHE_AGE_DAYS.osv
       }
     };

@@ -89,9 +89,11 @@ Feeds are cached locally with automatic freshness checks:
 
 | Source | Update Frequency | Cache Lifetime |
 |--------|------------------|----------------|
-| CISA KEV | Daily | 7 days |
-| FIRST EPSS | Daily | 7 days |
+| CISA KEV | Daily | 1 day |
+| NIST NVD | Daily | 1 day |
+| FIRST EPSS | Daily | 3 days |
 | OSV.dev | On-query | 7 days |
+| GHSA | On-query | 3 days |
 
 **Automatic updates:**
 - Runs on `npm install` via `postinstall` hook
@@ -99,6 +101,20 @@ Feeds are cached locally with automatic freshness checks:
 - Manual: `npx skill-audit --update-db`
 
 **Stale cache warning:** Audit output warns if feeds are >3 days old.
+
+### NVD Synchronization
+
+The `--update-db` command fetches CVEs modified in the last 24 hours only.
+For initial setup or after extended offline periods, run multiple times to build historical data:
+
+```bash
+# Multiple updates to build historical data
+skill-audit --update-db
+skill-audit --update-db
+skill-audit --update-db
+```
+
+Note: NVD API rate limits apply (5 requests/30 sec without API key). Set `NVD_API_KEY` environment variable for 50 requests/30 sec.
 
 ## Trust Sources
 

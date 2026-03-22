@@ -453,9 +453,9 @@ function extractPackagesFromLockfiles(resolvedPath: string): Array<{name: string
 // Parse JSON lockfiles (package-lock.json, Pipfile.lock, composer.lock, etc.)
 function parseJSONLockfile(content: string, ecosystem: string, packages: Array<{name: string, version: string, ecosystem: string}>) {
   const data = JSON.parse(content);
-  
-  // package-lock.json format
-  if (data.packages) {
+
+  // package-lock.json format (object with packages)
+  if (data.packages && typeof data.packages === 'object' && !Array.isArray(data.packages)) {
     for (const [path, pkg] of Object.entries(data.packages)) {
       const p = pkg as { version?: string; name?: string };
       if (p.version && path !== '') {
@@ -466,7 +466,7 @@ function parseJSONLockfile(content: string, ecosystem: string, packages: Array<{
       }
     }
   }
-  
+
   // Pipfile.lock format
   if (data.default || data.develop) {
     for (const section of ['default', 'develop']) {
@@ -480,16 +480,16 @@ function parseJSONLockfile(content: string, ecosystem: string, packages: Array<{
       }
     }
   }
-  
-  // composer.lock format
-  if (data.packages) {
+
+  // composer.lock format (array of packages)
+  if (Array.isArray(data.packages)) {
     for (const pkg of data.packages) {
       if (pkg.name && pkg.version) {
         packages.push({ name: pkg.name, version: pkg.version.replace(/^[=<>!~v]+/, ''), ecosystem });
       }
     }
   }
-  
+
   // renv.lock format
   if (data.Packages) {
     for (const [name, pkg] of Object.entries(data.Packages)) {
