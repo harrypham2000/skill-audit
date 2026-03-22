@@ -16,6 +16,56 @@ Security auditing CLI for AI agent skills.
 npm install -g @hungpg/skill-audit
 ```
 
+### Automatic Hook Setup
+
+During installation, you'll be prompted to set up a **PreToolUse hook** that automatically audits skills before installation:
+
+```
+╔════════════════════════════════════════════════════════════╗
+║                 🛡️  skill-audit hook setup                 ║
+╠════════════════════════════════════════════════════════════╣
+║                                                            ║
+║  skill-audit can automatically audit skills before        ║
+║  installation to protect you from malicious packages.     ║
+║                                                            ║
+║  When you run 'npx skills add <package>', the hook will:  ║
+║    • Scan the skill for security vulnerabilities          ║
+║    • Check for prompt injection, secrets, code execution  ║
+║    • Block installation if risk score > 3.0               ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+
+Options:
+  [Y] Yes, install the hook (recommended)
+  [N] No, skip for now
+  [S] Skip forever (don't ask again)
+```
+
+### Manual Hook Management
+
+```bash
+# Install hook manually
+skill-audit --install-hook
+
+# Install with custom threshold
+skill-audit --install-hook --hook-threshold 5.0
+
+# Check hook status
+skill-audit --hook-status
+
+# Remove hook
+skill-audit --uninstall-hook
+```
+
+### How the Hook Works
+
+1. **Trigger**: When you run `npx skills add <package>`
+2. **Scan**: skill-audit analyzes the skill before installation
+3. **Decision**:
+   - Risk score ≤ 3.0 → Installation proceeds
+   - Risk score > 3.0 → Installation blocked
+4. **Report**: Detailed findings shown in terminal
+
 ## Usage
 
 ```bash
@@ -59,6 +109,11 @@ skill-audit --update-db
 | `-o, --output <file>` | Save to file | |
 | `--no-deps` | Skip dependency scan | |
 | `-v, --verbose` | Verbose output | |
+| `--install-hook` | Install PreToolUse hook | |
+| `--uninstall-hook` | Remove PreToolUse hook | |
+| `--hook-threshold <score>` | Hook risk threshold | 3.0 |
+| `--hook-status` | Show hook status | |
+| `--block` | Exit 1 if threshold exceeded | |
 
 ## Exit Codes
 
