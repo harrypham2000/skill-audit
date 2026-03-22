@@ -4,8 +4,8 @@ description: This skill should be used when the user asks to "audit AI agent ski
 license: MIT
 compatibility: Node.js 18+ with npm or yarn
 metadata:
-  repo: https://github.com/vercel/skill-audit
-  version: 0.2.0
+  repo: https://github.com/harrypham2000/skill-audit
+  version: 0.3.0
 allowed-tools:
   - skill:exec
   - skill:read
@@ -14,7 +14,43 @@ allowed-tools:
 
 # skill-audit
 
-Security auditing CLI for AI agent skills in the Vercel ecosystem.
+Security auditing CLI for AI agent skills.
+
+## Installation for Agents
+
+### Claude Code
+
+```bash
+# Option 1: Install as skill from GitHub
+npx skills add harrypham2000/skill-audit -g -y
+
+# Option 2: Install CLI via npm
+npm install -g @hungpg/skill-audit
+```
+
+### Qwen Code
+
+```bash
+# Clone to Qwen skills directory
+mkdir -p ~/.qwen/skills
+git clone https://github.com/harrypham2000/skill-audit.git ~/.qwen/skills/skill-audit
+cd ~/.qwen/skills/skill-audit/skill-audit
+npm install && npm run build
+```
+
+### Gemini CLI
+
+```bash
+# Clone to Gemini skills directory
+mkdir -p ~/.gemini/skills
+git clone https://github.com/harrypham2000/skill-audit.git ~/.gemini/skills/skill-audit
+cd ~/.gemini/skills/skill-audit/skill-audit
+npm install && npm run build
+```
+
+> ⚠️ **Important for Skills CLI**: Use `owner/repo` format, not npm scoped names.
+> - ✅ Correct: `harrypham2000/skill-audit`
+> - ❌ Incorrect: `@hungpg/skill-audit`
 
 ## When to Use
 

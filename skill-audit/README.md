@@ -12,13 +12,48 @@ Security auditing CLI for AI agent skills.
 
 ## Installation
 
+### Option 1: Install via npm (Recommended for CLI)
+
 ```bash
 npm install -g @hungpg/skill-audit
 ```
 
-### Automatic Hook Setup
+This installs the CLI globally and triggers the postinstall hook prompt.
 
-During installation, you'll be prompted to set up a **PreToolUse hook** that automatically audits skills before installation:
+### Option 2: Install as a Skill (For Claude Code)
+
+```bash
+# Install from GitHub repo (not npm package name)
+npx skills add harrypham2000/skill-audit -g -y
+```
+
+> ⚠️ **Important**: The skills CLI expects `owner/repo` format, not npm scoped packages.
+> - ✅ Correct: `harrypham2000/skill-audit`
+> - ❌ Incorrect: `@hungpg/skill-audit`
+
+### Option 3: Install for Qwen Code
+
+```bash
+# Clone to Qwen skills directory
+mkdir -p ~/.qwen/skills
+git clone https://github.com/harrypham2000/skill-audit.git ~/.qwen/skills/skill-audit
+cd ~/.qwen/skills/skill-audit/skill-audit
+npm install && npm run build
+```
+
+### Option 4: Install for Gemini CLI
+
+```bash
+# Clone to Gemini skills directory
+mkdir -p ~/.gemini/skills
+git clone https://github.com/harrypham2000/skill-audit.git ~/.gemini/skills/skill-audit
+cd ~/.gemini/skills/skill-audit/skill-audit
+npm install && npm run build
+```
+
+## Automatic Hook Setup
+
+During npm installation, you'll be prompted to set up a **PreToolUse hook** that automatically audits skills before installation:
 
 ```
 ╔════════════════════════════════════════════════════════════╗
