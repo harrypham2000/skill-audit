@@ -26,6 +26,9 @@ npx skills add harrypham2000/skill-audit -g -y
 
 # Option 2: Install CLI via npm
 npm install -g @hungpg/skill-audit
+
+# Option 3: Install CLI via bun (faster)
+bun install -g @hungpg/skill-audit
 ```
 
 ### Qwen Code
@@ -35,7 +38,12 @@ npm install -g @hungpg/skill-audit
 mkdir -p ~/.qwen/skills
 git clone https://github.com/harrypham2000/skill-audit.git ~/.qwen/skills/skill-audit
 cd ~/.qwen/skills/skill-audit/skill-audit
+
+# Install with npm
 npm install && npm run build
+
+# Or with bun (faster)
+bun install && bun run build
 ```
 
 ### Gemini CLI
@@ -45,7 +53,12 @@ npm install && npm run build
 mkdir -p ~/.gemini/skills
 git clone https://github.com/harrypham2000/skill-audit.git ~/.gemini/skills/skill-audit
 cd ~/.gemini/skills/skill-audit/skill-audit
+
+# Install with npm
 npm install && npm run build
+
+# Or with bun (faster)
+bun install && bun run build
 ```
 
 > ⚠️ **Important for Skills CLI**: Use `owner/repo` format, not npm scoped names.

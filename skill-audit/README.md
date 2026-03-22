@@ -20,7 +20,15 @@ npm install -g @hungpg/skill-audit
 
 This installs the CLI globally and triggers the postinstall hook prompt.
 
-### Option 2: Install as a Skill (For Claude Code)
+### Option 2: Install via bun (Fast Alternative)
+
+```bash
+bun install -g @hungpg/skill-audit
+```
+
+Bun is significantly faster than npm for installation.
+
+### Option 3: Install as a Skill (For Claude Code)
 
 ```bash
 # Install from GitHub repo (not npm package name)
@@ -31,7 +39,7 @@ npx skills add harrypham2000/skill-audit -g -y
 > - ✅ Correct: `harrypham2000/skill-audit`
 > - ❌ Incorrect: `@hungpg/skill-audit`
 
-### Option 3: Install for Qwen Code
+### Option 4: Install for Qwen Code
 
 ```bash
 # Clone to Qwen skills directory
@@ -39,9 +47,12 @@ mkdir -p ~/.qwen/skills
 git clone https://github.com/harrypham2000/skill-audit.git ~/.qwen/skills/skill-audit
 cd ~/.qwen/skills/skill-audit/skill-audit
 npm install && npm run build
+
+# Or with bun (faster)
+bun install && bun run build
 ```
 
-### Option 4: Install for Gemini CLI
+### Option 5: Install for Gemini CLI
 
 ```bash
 # Clone to Gemini skills directory
@@ -49,6 +60,9 @@ mkdir -p ~/.gemini/skills
 git clone https://github.com/harrypham2000/skill-audit.git ~/.gemini/skills/skill-audit
 cd ~/.gemini/skills/skill-audit/skill-audit
 npm install && npm run build
+
+# Or with bun (faster)
+bun install && bun run build
 ```
 
 ## Automatic Hook Setup
