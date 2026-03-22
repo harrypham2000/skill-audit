@@ -67,27 +67,27 @@ bun install && bun run build
 
 ## Automatic Hook Setup
 
-During npm installation, you'll be prompted to set up a **PreToolUse hook** that automatically audits skills before installation:
+After installation, you'll see a message about setting up the PreToolUse hook:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                 🛡️  skill-audit hook setup                 ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  skill-audit can automatically audit skills before        ║
-║  installation to protect you from malicious packages.     ║
-║                                                            ║
-║  When you run 'npx skills add <package>', the hook will:  ║
-║    • Scan the skill for security vulnerabilities          ║
-║    • Check for prompt injection, secrets, code execution  ║
-║    • Block installation if risk score > 3.0               ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+┌─────────────────────────────────────────────────────────┐
+│           🛡️  skill-audit installed!                   │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Protect your skills from vulnerabilities:              │
+│                                                         │
+│    skill-audit --install-hook                           │
+│                                                         │
+│  This adds a PreToolUse hook that audits skills         │
+│  before installation via 'npx skills add'.             │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
 
-Options:
-  [Y] Yes, install the hook (recommended)
-  [N] No, skip for now
-  [S] Skip forever (don't ask again)
+Run the command to set up automatic skill auditing:
+
+```bash
+skill-audit --install-hook
 ```
 
 ### Manual Hook Management
