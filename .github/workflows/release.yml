@@ -47,15 +47,21 @@ jobs:
         run: |
           # Get conventional commit info
           git fetch origin main --tags
-          
-          # Get commits since last tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" | grep -v "^$")
-          
+
+          # Get commits since last tag (handle no tags case)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            # No tags, get all commits
+            COMMITS=$(git log --pretty=format:"%s" | grep -v "^$")
+            LAST_TAG="(no previous tags)"
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" | grep -v "^$")
+          fi
+
           echo "Commits since ${LAST_TAG}:"
           echo "$COMMITS"
           echo "---"
-          
+
           # Determine bump type
           BUMP="patch"
           if echo "$COMMITS" | grep -qi "^feat"; then
@@ -64,22 +70,22 @@ jobs:
           if echo "$COMMITS" | grep -qi "^BREAKING CHANGE"; then
             BUMP="major"
           fi
-          
+
           # Get current version
           CURRENT=$(node -p "require('./package.json').version")
           echo "Current version: $CURRENT"
-          
+
           # Calculate new version
           NEW=$(npm version --no-git-tag-version --allow-same-version $BUMP --silent 2>/dev/null | sed 's/v//')
           echo "New version: $NEW"
-          
+
           # Check if there are actual changes to release
           if [ "$CURRENT" = "$NEW" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
-          
+
           echo "version=$NEW" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
