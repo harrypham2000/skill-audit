@@ -4,6 +4,7 @@
 .gsd/
 .qwen/
 .gemini_security/
+QWEN.md
 
 # Documentation (non-essential)
 AI Agent Skill Security Auditing Plan for the Vercel Skills Ecosystem.md
