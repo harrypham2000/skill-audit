@@ -109,15 +109,15 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.version.outputs.has_changes == 'true'
-        uses: actions/create-release@b6166c5912be144ff3d1a6e2c1c5b6f6e9c6b3e9  # v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@de0c474155e80d4179543e0e2e1c3c8a9c9b3d3e
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          release_name: Release v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
           body: ${{ steps.version.outputs.body }}
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # This job runs after release is created, which triggers publish.yml
   publish:
