@@ -75,12 +75,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Pre-release
-        uses: actions/create-release@b6166c5912be144ff3d1a6e2c1c5b6f6e9c6b3e9  # v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: Beta Release v${{ steps.version.outputs.version }}
+          tag: v${{ steps.version.outputs.version }}
+          name: Beta Release v${{ steps.version.outputs.version }}
           body: |
             ## Beta Release
             
@@ -92,6 +90,8 @@ jobs:
             ```
           draft: false
           prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit version bump
         working-directory: ./skill-audit
