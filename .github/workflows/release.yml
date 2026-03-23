@@ -90,34 +90,37 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" | grep -v "^$" | head -20)
           
-          # Create release body
-          BODY="## Changes
-          
-          $CHANGELOG
-          
-          ## Usage
-          
-          \`\`\`\`bash
-          # Update skill-audit
-          npm install -g @hungpg/skill-audit
-          
-          # Or with bun
-          bun install -g @hungpg/skill-audit
-          \`\`\`
-          
-          echo "body=$BODY" >> $GITHUB_OUTPUT
+          # Create RELEASE file for pipe-cd/actions-gh-release
+          cat > RELEASE << 'EOF'
+          tag: v${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
+          title: Release v${{ steps.version.outputs.version }}
+          prerelease: false
+          releaseNote: |
+            ## Changes
+
+            $CHANGELOG
+
+            ## Usage
+
+            ```bash
+            # Update skill-audit
+            npm install -g @hungpg/skill-audit
+
+            # Or with bun
+            bun install -g @hungpg/skill-audit
+            ```
+          EOF
+
+          cat RELEASE
 
       - name: Create GitHub Release
         if: steps.version.outputs.has_changes == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: pipe-cd/actions-gh-release@v2.6.0
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Release v${{ steps.version.outputs.version }}
-          body: ${{ steps.version.outputs.body }}
-          draft: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release_file: RELEASE
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # This job runs after release is created, which triggers publish.yml
   publish:
