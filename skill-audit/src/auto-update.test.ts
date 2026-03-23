@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the intel module before importing auto-update
 vi.mock('./intel.js', () => ({
@@ -13,13 +13,15 @@ import { isCacheStale, fetchKEV, fetchEPSS, fetchNVD, saveToCache } from './inte
 
 describe('ensureIntelFeedsFresh', () => {
   // Import after mocking - use dynamic import in test
-  let ensureIntelFeedsFresh: () => Promise<void>;
+  let ensureIntelFeedsFresh: (options?: { verbose?: boolean; timeout?: number; delay?: number }) => Promise<void>;
+  let getFeedStatus: () => Array<{ source: string; stale: boolean; age?: number; warn: boolean }>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     // Re-import to get fresh module with mocks
     const module = await import('./auto-update.js');
     ensureIntelFeedsFresh = module.ensureIntelFeedsFresh;
+    getFeedStatus = module.getFeedStatus;
   });
 
   it('should NOT update when all caches are fresh', async () => {
@@ -50,8 +52,10 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchEPSS).mockResolvedValue([]);
     vi.mocked(fetchNVD).mockResolvedValue([]);
 
-    // Act
-    await ensureIntelFeedsFresh();
+    // Act - use delay: 0 to run immediately in tests
+    await ensureIntelFeedsFresh({ delay: 0 });
+    // Wait for setTimeout to complete
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Assert
     expect(fetchKEV).toHaveBeenCalledTimes(1);
@@ -73,7 +77,8 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchNVD).mockResolvedValue([]);
 
     // Act
-    await ensureIntelFeedsFresh();
+    await ensureIntelFeedsFresh({ delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Assert
     expect(fetchEPSS).toHaveBeenCalledTimes(1);
@@ -93,7 +98,8 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchNVD).mockResolvedValue(mockNVDRecords);
 
     // Act
-    await ensureIntelFeedsFresh();
+    await ensureIntelFeedsFresh({ delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Assert
     expect(fetchNVD).toHaveBeenCalledTimes(1);
@@ -113,7 +119,8 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchNVD).mockResolvedValue(mockNVD);
 
     // Act
-    await ensureIntelFeedsFresh();
+    await ensureIntelFeedsFresh({ delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Assert
     expect(fetchKEV).toHaveBeenCalledTimes(1);
@@ -130,7 +137,8 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchNVD).mockResolvedValue([]);
 
     // Act
-    await ensureIntelFeedsFresh();
+    await ensureIntelFeedsFresh({ delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Assert: saveToCache should NOT be called for empty records
     expect(saveToCache).not.toHaveBeenCalled();
@@ -144,7 +152,8 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchNVD).mockResolvedValue([]);
 
     // Act & Assert: Should not throw
-    await expect(ensureIntelFeedsFresh()).resolves.not.toThrow();
+    await ensureIntelFeedsFresh({ delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
     expect(saveToCache).not.toHaveBeenCalled(); // Should not save on error
   });
 
@@ -159,12 +168,92 @@ describe('ensureIntelFeedsFresh', () => {
     vi.mocked(fetchEPSS).mockRejectedValue(new Error('EPSS API down'));
     vi.mocked(fetchNVD).mockResolvedValue(mockEPSS);
 
-    // Act & Assert: Should not throw despite EPSS failure
-    await expect(ensureIntelFeedsFresh()).resolves.not.toThrow();
+    // Act
+    await ensureIntelFeedsFresh({ delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Should still save KEV and NVD
     expect(saveToCache).toHaveBeenCalledWith('kev', mockKEV);
     expect(saveToCache).toHaveBeenCalledWith('nvd', mockEPSS);
+  });
+
+  it('should resolve immediately (non-blocking)', async () => {
+    // Arrange
+    vi.mocked(isCacheStale).mockReturnValue({ stale: true, warn: false });
+    vi.mocked(fetchKEV).mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([]), 1000)));
+
+    const start = Date.now();
+    
+    // Act - should resolve quickly, not wait for fetch
+    await ensureIntelFeedsFresh({ delay: 10 });
+    const elapsed = Date.now() - start;
+
+    // Assert - should resolve within 100ms (delay + small buffer)
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  it('should respect timeout option', async () => {
+    // Arrange
+    vi.mocked(isCacheStale).mockReturnValue({ stale: true, warn: false });
+    vi.mocked(fetchKEV).mockImplementation(() => new Promise(resolve => setTimeout(() => resolve([{ id: 'CVE-1', aliases: [], source: 'KEV' as const, references: [] }]), 10000)));
+
+    // Act - with short timeout
+    await ensureIntelFeedsFresh({ timeout: 50, delay: 10 });
+
+    // Assert - should timeout and not save
+    expect(saveToCache).not.toHaveBeenCalled();
+  });
+
+  it('should support verbose mode', async () => {
+    // Arrange
+    vi.mocked(isCacheStale).mockReturnValue({ stale: false, warn: false });
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // Act
+    await ensureIntelFeedsFresh({ verbose: true, delay: 0 });
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    // Assert - should log in verbose mode
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+});
+
+describe('getFeedStatus', () => {
+  let getFeedStatus: () => Array<{ source: string; stale: boolean; age?: number; warn: boolean }>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const module = await import('./auto-update.js');
+    getFeedStatus = module.getFeedStatus;
+  });
+
+  it('should return status for all sources', () => {
+    // Arrange
+    vi.mocked(isCacheStale)
+      .mockReturnValueOnce({ stale: true, age: 1.5, warn: true })
+      .mockReturnValueOnce({ stale: false, age: 0.5, warn: false })
+      .mockReturnValueOnce({ stale: true, age: 4.0, warn: true });
+
+    // Act
+    const status = getFeedStatus();
+
+    // Assert
+    expect(status).toHaveLength(3);
+    expect(status[0]).toEqual({ source: 'kev', stale: true, age: 1.5, warn: true });
+    expect(status[1]).toEqual({ source: 'epss', stale: false, age: 0.5, warn: false });
+    expect(status[2]).toEqual({ source: 'nvd', stale: true, age: 4.0, warn: true });
+  });
+
+  it('should handle missing cache info', () => {
+    // Arrange - isCacheStale returns undefined
+    vi.mocked(isCacheStale).mockReturnValue({ stale: true, warn: false });
+
+    // Act
+    const status = getFeedStatus();
+
+    // Assert
+    expect(status[0]).toEqual({ source: 'kev', stale: true, age: undefined, warn: false });
   });
 });
 
@@ -173,5 +262,10 @@ describe('Auto-update integration with CLI modes', () => {
     // This is a behavioral test - verify the function is exported and callable
     const { ensureIntelFeedsFresh } = await import('./auto-update.js');
     expect(typeof ensureIntelFeedsFresh).toBe('function');
+  });
+
+  it('should export getFeedStatus function', async () => {
+    const { getFeedStatus } = await import('./auto-update.js');
+    expect(typeof getFeedStatus).toBe('function');
   });
 });
