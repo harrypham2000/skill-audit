@@ -2,6 +2,8 @@
 .serena/
 .bg-shell/
 .gsd/
+.qwen/
+.gemini_security/
 
 # Documentation (non-essential)
 AI Agent Skill Security Auditing Plan for the Vercel Skills Ecosystem.md
