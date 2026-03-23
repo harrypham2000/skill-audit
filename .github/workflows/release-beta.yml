@@ -9,6 +9,11 @@ permissions:
   contents: write
   id-token: write
 
+env:
+  ACTIONS_STEP_DEBUG: false
+  ACTIONS_RUNNER_DEBUG: false
+  NPM_CONFIG_LOGLEVEL: warn
+
 jobs:
   beta-release:
     runs-on: ubuntu-latest
@@ -70,10 +75,9 @@ jobs:
 
       - name: Publish to npm (beta tag)
         working-directory: ./skill-audit
-        run: |
-          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
-          npm whoami
-          npm publish --tag beta --access public
+        run: npm publish --tag beta --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Pre-release
         uses: ncipollo/release-action@v1
