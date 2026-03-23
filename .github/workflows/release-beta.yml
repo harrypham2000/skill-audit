@@ -74,11 +74,15 @@ jobs:
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Configure npm
+        run: |
+          echo "//registry.npmjs.org/:_authToken=\${NPM_TOKEN}" >> ~/.npmrc
+
       - name: Publish to npm (beta tag)
         working-directory: ./skill-audit
         run: npm publish --tag beta --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Pre-release
         uses: ncipollo/release-action@v1
