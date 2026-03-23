@@ -1,0 +1,132 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      has_changes: ${{ steps.version.outputs.has_changes }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        working-directory: ./skill-audit
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ./skill-audit
+        run: npm test
+
+      - name: Build
+        working-directory: ./skill-audit
+        run: npm run build
+
+      - name: Determine version bump
+        id: version
+        working-directory: ./skill-audit
+        run: |
+          # Get conventional commit info
+          git fetch origin main --tags
+          
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" | grep -v "^$")
+          
+          echo "Commits since ${LAST_TAG}:"
+          echo "$COMMITS"
+          echo "---"
+          
+          # Determine bump type
+          BUMP="patch"
+          if echo "$COMMITS" | grep -qi "^feat"; then
+            BUMP="minor"
+          fi
+          if echo "$COMMITS" | grep -qi "^BREAKING CHANGE"; then
+            BUMP="major"
+          fi
+          
+          # Get current version
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT"
+          
+          # Calculate new version
+          NEW=$(npm version --no-git-tag-version --allow-same-version $BUMP --silent 2>/dev/null | sed 's/v//')
+          echo "New version: $NEW"
+          
+          # Check if there are actual changes to release
+          if [ "$CURRENT" = "$NEW" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "version=$NEW" >> $GITHUB_OUTPUT
+
+      - name: Update changelog
+        if: steps.version.outputs.has_changes == 'true'
+        working-directory: ./skill-audit
+        run: |
+          # Generate changelog
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" | grep -v "^$" | head -20)
+          
+          # Create release body
+          BODY="## Changes
+          
+          $CHANGELOG
+          
+          ## Usage
+          
+          \`\`\`\`bash
+          # Update skill-audit
+          npm install -g @hungpg/skill-audit
+          
+          # Or with bun
+          bun install -g @hungpg/skill-audit
+          \`\`\`
+          
+          echo "body=$BODY" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.has_changes == 'true'
+        uses: actions/create-release@b6166c5912be144ff3d1a6e2c1c5b6f6e9c6b3e9  # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: Release v${{ steps.version.outputs.version }}
+          body: ${{ steps.version.outputs.body }}
+          draft: false
+          prerelease: false
+
+  # This job runs after release is created, which triggers publish.yml
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    if: needs.release.outputs.has_changes == 'true'
+
+    steps:
+      - name: Log publish trigger
+        run: |
+          echo "Release v${{ needs.release.outputs.version }} created"
+          echo "publish.yml will automatically publish to npm"

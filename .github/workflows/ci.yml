@@ -27,6 +27,10 @@ jobs:
         working-directory: ./skill-audit
         run: npm ci
 
+      - name: Run tests
+        working-directory: ./skill-audit
+        run: npm test
+
       - name: Build
         working-directory: ./skill-audit
         run: npm run build
