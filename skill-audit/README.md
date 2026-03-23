@@ -243,3 +243,4 @@ Note: NVD API rate limits apply (5 requests/30 sec without API key). Set `NVD_AP
 **postinstall update fails**: The `--quiet || true` flags ensure install continues even if update fails. Run manually later.
 
 **Offline mode**: Cached feeds work offline. Re-run audit with existing cache.
+
