@@ -82,24 +82,16 @@ jobs:
           
           echo "version=$NEW" >> $GITHUB_OUTPUT
 
-      - name: Update changelog
+      - name: Create GitHub Release
         if: steps.version.outputs.has_changes == 'true'
-        working-directory: ./skill-audit
-        run: |
-          # Generate changelog
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" | grep -v "^$" | head -20)
-          
-          # Create RELEASE file for pipe-cd/actions-gh-release
-          cat > RELEASE << 'EOF'
+        uses: ncipollo/release-action@v1
+        with:
           tag: v${{ steps.version.outputs.version }}
           name: Release v${{ steps.version.outputs.version }}
-          title: Release v${{ steps.version.outputs.version }}
-          prerelease: false
-          releaseNote: |
+          body: |
             ## Changes
 
-            $CHANGELOG
+            See commit history for details.
 
             ## Usage
 
@@ -110,17 +102,10 @@ jobs:
             # Or with bun
             bun install -g @hungpg/skill-audit
             ```
-          EOF
-
-          cat RELEASE
-
-      - name: Create GitHub Release
-        if: steps.version.outputs.has_changes == 'true'
-        uses: pipe-cd/actions-gh-release@v2.6.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          release_file: RELEASE
+          draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # This job runs after release is created, which triggers publish.yml
   publish:
