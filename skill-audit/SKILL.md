@@ -5,7 +5,7 @@ license: MIT
 compatibility: Node.js 18+ with npm or yarn
 metadata:
   repo: https://github.com/harrypham2000/skill-audit
-  version: 0.5.0
+  version: 0.5.1
 allowed-tools:
   - skill:exec
   - skill:read
@@ -15,6 +15,13 @@ allowed-tools:
 # skill-audit
 
 Security auditing CLI for AI agent skills with **PII detection** and **compliance validation**.
+
+## What's New in v0.5.1
+
+- 📦 **Progressive Disclosure**: Added `references/`, `examples/`, and `scripts/` directories for better skill organization
+- 📚 **Reference Documentation**: 4 new reference files with detailed PII patterns, compliance frameworks, scoring methodology, and intelligence sources
+- 🧪 **Example Outputs**: Sample audit, lint, and compliance reports for users
+- 🔧 **Utility Scripts**: `validate-skill.sh` and `test-audit.sh` for development workflows
 
 ## What's New in v0.5.0
 
@@ -74,7 +81,7 @@ bun install && bun run build
 
 ## When to Use
 
-Activate this skill when:
+This skill activates when:
 
 - **Evaluating third-party skills** before installing from untrusted sources
 - **Security concerns arise** about prompt injection, secrets leakage, code execution, or data exfiltration
@@ -84,7 +91,7 @@ Activate this skill when:
 
 ### When NOT to Use
 
-- Auditing general npm/Python packages (use `npm audit`, `safety`, or dependency scanners directly)
+- Auditing general npm/Python packages (use `npm audit`, `safety`, or dependency scanners)
 - Reviewing non-skill code (use `security-reviewer` agent instead)
 - Checking only spec format without security concerns (use `--mode lint` for fast validation)
 
@@ -138,6 +145,8 @@ Detects 39 types of Personally Identifiable Information:
 | **International PII** | US SSN, Credit Card, IBAN, NHS (UK), Passport (US/EU/UK/JP/KR), IP Address, Email |
 | **Secrets** | OpenAI/Anthropic/AWS/GitHub/Stripe API keys, PEM keys, JWTs, Database connection strings |
 
+See `references/pii-patterns.md` for complete pattern list and regex details.
+
 ### Compliance Validation
 
 Validates skills against regulatory frameworks:
@@ -147,6 +156,8 @@ Validates skills against regulatory frameworks:
 | **Vietnam AI Law 2026** | Data localization, User consent, Transparency, Human oversight, Data minimization, Right to explanation, Bias prevention | minimal, limited, high, unacceptable |
 | **EU AI Act** | Risk assessment, Data governance, Technical documentation, Record keeping, Transparency | minimal, limited, high, unacceptable |
 | **GDPR** | Lawful basis, Data subject rights, Privacy by design, DPIA, Breach notification, International transfers | minimal, limited, high, unacceptable |
+
+See `references/compliance-frameworks.md` for detailed requirements and remediation guidance.
 
 ### `update-db`
 
@@ -211,6 +222,8 @@ Caches to `.cache/skill-audit/feeds/` for offline use.
 | ⚠️ Risky | 0.1-3.0 | Minor issues, review recommended |
 | 🔴 Dangerous | 3.1-7.0 | Significant risks, fix before use |
 | ☠️ Malicious | 7.1-10.0 | Critical issues, do not use |
+
+See `references/scoring-methodology.md` for detailed scoring algorithm and threshold rationale.
 
 ## Exit Codes
 
@@ -294,6 +307,32 @@ Three-layer validation approach:
 | False positive on prompt injection | Review context - sample JSON output may trigger detections |
 | Dependency scan fails | Ensure lockfile exists; run `npm install` or equivalent |
 | Skill path not found | Verify symlink resolution; check case sensitivity |
+
+## Additional Resources
+
+### Reference Files
+
+For detailed information, consult:
+
+- **`references/pii-patterns.md`** - Complete list of 39 PII detection patterns for Vietnam and International data
+- **`references/compliance-frameworks.md`** - Detailed Vietnam AI Law 2026, EU AI Act, and GDPR requirements
+- **`references/scoring-methodology.md`** - Risk scoring algorithm and threshold rationale
+- **`references/intelligence-sources.md`** - Vulnerability intelligence sources and cache management
+
+### Example Files
+
+Working examples in `examples/`:
+
+- **`examples/example-audit-output.json`** - Sample JSON audit report
+- **`examples/example-lint-output.txt`** - Sample lint mode output
+- **`examples/example-compliance-report.md`** - Sample compliance findings
+
+### Utility Scripts
+
+Development tools in `scripts/`:
+
+- **`scripts/validate-skill.sh`** - Validate SKILL.md structure and frontmatter
+- **`scripts/test-audit.sh`** - Test audit functionality on sample directories
 
 ## References
 

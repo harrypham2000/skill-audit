@@ -1,0 +1,69 @@
+🔍 Validating skills against Agent Skills specification...
+Found 4 skills
+
+📋 Summary (lint mode):
+   Valid: 3 | Warnings: 1 | Errors: 0
+
+✅ skill-audit: Valid
+   - SKILL.md: Valid frontmatter
+   - name field: Present
+   - description: Present (1,024 chars)
+   - allowed-tools: Valid structure
+
+✅ security-review: Valid
+   - SKILL.md: Valid frontmatter
+   - name field: Present
+   - description: Present (856 chars)
+   - allowed-tools: Valid structure
+   ⚠️  Warning: SKILL.md has 523 lines (recommended < 500)
+
+⚠️  tdd-workflow: Warnings
+   - SKILL.md: Valid frontmatter
+   - name field: Present
+   - description: Present (712 chars)
+   - allowed-tools: Valid structure
+   ⚠️  Warning: name field uses uppercase (tdd-workflow vs tdd-workflow)
+   ⚠️  Warning: description exceeds 1024 characters (1,156 chars)
+
+✅ writing-skills: Valid
+   - SKILL.md: Valid frontmatter
+   - name field: Present
+   - description: Present (934 chars)
+   - allowed-tools: Valid structure
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Detailed Validation Results:
+
+skill-audit:
+  ✓ Frontmatter starts with ---
+  ✓ name: "skill-audit" present
+  ✓ description: Present (1,024 chars)
+  ✓ allowed-tools: Array with 3 tools
+  ✓ Progressive disclosure: SKILL.md has 317 lines (OK)
+
+security-review:
+  ✓ Frontmatter starts with ---
+  ✓ name: "security-review" present
+  ✓ description: Present (856 chars)
+  ✓ allowed-tools: Array with 2 tools
+  ⚠ Progressive disclosure: SKILL.md has 523 lines (consider splitting)
+
+tdd-workflow:
+  ✓ Frontmatter starts with ---
+  ✓ name: "tdd-workflow" present
+  ⚠ name: Should be lowercase (currently: "TDD-Workflow")
+  ✓ description: Present
+  ⚠ description: Exceeds recommended 1024 characters
+  ✓ allowed-tools: Array with 2 tools
+
+writing-skills:
+  ✓ Frontmatter starts with ---
+  ✓ name: "writing-skills" present
+  ✓ description: Present (934 chars)
+  ✓ allowed-tools: Array with 1 tool
+  ✓ Progressive disclosure: SKILL.md has 234 lines (OK)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Exit Code: 0 (no blocking issues)

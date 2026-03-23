@@ -1,6 +1,6 @@
 {
   "name": "@hungpg/skill-audit",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Security auditing CLI for AI agent skills with PII detection and compliance validation",
   "type": "module",
   "bin": {
@@ -21,6 +21,8 @@
   "files": [
     "dist",
     "scripts",
+    "references",
+    "examples",
     "rules",
     "README.md",
     "SKILL.md"
