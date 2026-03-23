@@ -148,11 +148,18 @@ for (const skill of filteredSkills) {
 
   const allSecurityFindings = [...securityResult.findings, ...depFindings];
   
+  // NEW: Separate PII and compliance findings
+  const piiFindings = allSecurityFindings.filter(f => f.category === 'PII');
+  const complianceFindings = allSecurityFindings.filter(f => f.category === 'COMP');
+  const otherSecurityFindings = allSecurityFindings.filter(f => !['PII', 'COMP'].includes(f.category));
+
   const result = createGroupedAuditResult(
     skill,
     specResult.manifest,
     specResult.findings,
-    allSecurityFindings,
+    otherSecurityFindings,
+    piiFindings,
+    complianceFindings,
     []
   );
   results.push(result);

@@ -111,6 +111,36 @@ const EXFILTRATION_PATTERNS = [
 ];
 
 // ============================================================
+// PII-AWARE EXFILTRATION PATTERNS (ASI02/ASI03)
+// Inspired by AgentVeil's PII protection approach
+// ============================================================
+
+const PII_EXFILTRATION_PATTERNS = [
+  // PII in URLs
+  { pattern: /fetch\s*\([^)]*(ssn|cccd|cmnd|passport|email|phone|address)/i, id: "PEX01", severity: "critical", message: "PII detected in fetch URL - exfiltration risk" },
+  { pattern: /https?:\/\/[^"'\s]*[?&](ssn|cccd|email|phone|passport|tax_id|credit_card)=/i, id: "PEX02", severity: "critical", message: "PII in URL query parameter - exfiltration risk" },
+  
+  // PII in form data / request body
+  { pattern: /FormData.*\.(append|set)\s*\([^)]*(email|phone|ssn|cccd|passport|credit_card)/i, id: "PEX03", severity: "critical", message: "PII in FormData - potential exfiltration" },
+  { pattern: /body\s*:\s*JSON\.stringify\s*\([^)]*(email|phone|ssn|cccd|passport|credit_card)/i, id: "PEX04", severity: "critical", message: "PII in JSON body - potential exfiltration" },
+  
+  // PII in API calls
+  { pattern: /api\s*\.\s*(post|put|send)\s*\([^)]*(email|phone|ssn|cccd|passport)/i, id: "PEX05", severity: "high", message: "PII in API call - verify destination" },
+  { pattern: /axios\s*\.\s*(post|put)\s*\([^)]*(email|phone|ssn|cccd|passport)/i, id: "PEX06", severity: "high", message: "PII in axios request - verify destination" },
+  
+  // PII in logging
+  { pattern: /console\.(log|info|debug|warn)\s*\([^)]*(email|phone|ssn|cccd|password|token)/i, id: "PEX07", severity: "high", message: "PII in console log - data leak risk" },
+  { pattern: /logger\.(info|debug|warn|error)\s*\([^)]*(email|phone|ssn|cccd|password)/i, id: "PEX08", severity: "high", message: "PII in logger output - data leak risk" },
+  
+  // PII in file writes (potential data staging)
+  { pattern: /writeFile.*email|writeFile.*phone|writeFile.*ssn|writeFile.*cccd/i, id: "PEX09", severity: "high", message: "PII written to file - potential data staging" },
+  
+  // Vietnamese PII specific
+  { pattern: /send.*căn cước|gửi.*căn cước|upload.*căn cước/i, id: "PEX10", severity: "critical", message: "Vietnam CCCD exfiltration pattern" },
+  { pattern: /send.*mã số thuế|gửi.*mã số thuế|upload.*mã số thuế/i, id: "PEX11", severity: "critical", message: "Vietnam Tax ID exfiltration pattern" },
+];
+
+// ============================================================
 // DANGEROUS CODE EXECUTION (ASI05)
 // ============================================================
 
@@ -192,6 +222,8 @@ function getCategoryFromId(id: string): string {
   if (id.startsWith("TM")) return "TM";
   if (id.startsWith("BM")) return "BM";
   if (id.startsWith("PROV")) return "PROV";
+  if (id.startsWith("PII")) return "PII";  // NEW: PII category
+  if (id.startsWith("PEX")) return "PII";  // NEW: PII exfiltration
   return "SC";
 }
 
@@ -204,6 +236,8 @@ function getASIXXFromId(id: string): string {
   if (id.startsWith("TM")) return "ASI02";
   if (id.startsWith("BM")) return "ASI09";
   if (id.startsWith("PROV")) return "ASI04";
+  if (id.startsWith("PII")) return "ASI03";  // NEW: Sensitive Data Exposure
+  if (id.startsWith("PEX")) return "ASI02";  // PII exfiltration = Tool Misuse
   return "ASI04";
 }
 
@@ -260,7 +294,8 @@ function mapCategoryToASIXX(category: string): string {
     "exfiltration": "ASI02",
     "secrets": "ASI04",
     "toolMisuse": "ASI02",
-    "behavioral": "ASI09"
+    "behavioral": "ASI09",
+    "pii": "ASI03"  // NEW: Sensitive Data Exposure
   };
   return map[category] || "ASI04";
 }
@@ -405,12 +440,14 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
           const exPatterns = patterns.get("exfiltration") || [];
           const bmPatterns = patterns.get("behavioral") || [];
           const cePatterns = patterns.get("shellInjection") || [];
-          
+          const piiPatterns = patterns.get("pii") || [];  // NEW: PII patterns
+
           findings.push(...scanContent(content, file, piPatterns));
           findings.push(...scanContent(content, file, clPatterns));
           findings.push(...scanContent(content, file, exPatterns));
           findings.push(...scanContent(content, file, bmPatterns));
           findings.push(...scanContent(content, file, cePatterns));
+          findings.push(...scanContent(content, file, piiPatterns));  // NEW
         } else {
           findings.push(...scanContent(content, file, PROMPT_INJECTION_PATTERNS));
           findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_MD));
@@ -419,6 +456,8 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
           findings.push(...scanContent(content, file, DANGEROUS_PATTERNS));
         }
         findings.push(...scanCodeBlocksInMarkdown(content, file));
+        // NEW: Always scan for PII-aware exfiltration
+        findings.push(...scanContent(content, file, PII_EXFILTRATION_PATTERNS));
       } else if (isCodeFile(file)) {
         if (hasExternalPatterns) {
           const clPatterns = patterns.get("credentialLeaks") || [];
@@ -426,12 +465,14 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
           const cePatterns = patterns.get("shellInjection") || [];
           const scPatterns = patterns.get("secrets") || [];
           const tmPatterns = patterns.get("toolMisuse") || [];
-          
+          const piiPatterns = patterns.get("pii") || [];  // NEW: PII patterns
+
           findings.push(...scanContent(content, file, clPatterns));
           findings.push(...scanContent(content, file, exPatterns));
           findings.push(...scanContent(content, file, cePatterns));
           findings.push(...scanContent(content, file, scPatterns));
           findings.push(...scanContent(content, file, tmPatterns));
+          findings.push(...scanContent(content, file, piiPatterns));  // NEW
         } else {
           findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_CODE));
           findings.push(...scanContent(content, file, EXFILTRATION_PATTERNS));
@@ -439,6 +480,8 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
           findings.push(...scanContent(content, file, SECRET_PATTERNS));
           findings.push(...scanContent(content, file, TOOL_MISUSE_PATTERNS));
         }
+        // NEW: Always scan for PII-aware exfiltration
+        findings.push(...scanContent(content, file, PII_EXFILTRATION_PATTERNS));
       }
     } catch (e) {
       unreadableFiles.push(file);

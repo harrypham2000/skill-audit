@@ -1,11 +1,11 @@
 ---
 name: skill-audit
-description: This skill should be used when the user asks to "audit AI agent skills for security vulnerabilities", "evaluate third-party skills before installing", "check for prompt injection or secrets leakage", "scan skills for code execution risks", "validate skills against Agent Skills specification", or "assess skill security posture with CVE/GHSA/KEV/EPSS/NVD intelligence".
+description: This skill should be used when the user asks to "audit AI agent skills for security vulnerabilities", "evaluate third-party skills before installing", "check for prompt injection or secrets leakage", "scan skills for PII exposure", "validate compliance with AI regulations", "scan skills for code execution risks", "validate skills against Agent Skills specification", or "assess skill security posture with CVE/GHSA/KEV/EPSS/NVD intelligence".
 license: MIT
 compatibility: Node.js 18+ with npm or yarn
 metadata:
   repo: https://github.com/harrypham2000/skill-audit
-  version: 0.3.0
+  version: 0.4.0
 allowed-tools:
   - skill:exec
   - skill:read
@@ -14,7 +14,13 @@ allowed-tools:
 
 # skill-audit
 
-Security auditing CLI for AI agent skills.
+Security auditing CLI for AI agent skills with **PII detection** and **compliance validation**.
+
+## What's New in v0.4.0
+
+- 🔐 **PII Detection**: 39 patterns for Vietnam and International PII (CCCD, SSN, Credit Cards, API Keys, etc.)
+- 📋 **Compliance Validation**: Checks against Vietnam AI Law 2026, EU AI Act, and GDPR
+- 🚨 **PII-Aware Exfiltration Detection**: Detects when PII is being sent to external endpoints
 
 ## Installation for Agents
 
@@ -118,6 +124,28 @@ Full security audit including:
 - Behavioral manipulation (ASI09)
 - Provenance checks (trusted domains, pinned refs)
 - Dependency vulnerability scanning
+- **PII detection (ASI03)** - 39 patterns for Vietnam and International PII
+- **Compliance validation** - Vietnam AI Law 2026, EU AI Act, GDPR
+
+### PII Detection
+
+Detects 39 types of Personally Identifiable Information:
+
+| Category | Types |
+|----------|-------|
+| **Vietnam PII** | CCCD (Citizen ID), CMND (Old ID), Tax ID (TIN), Phone, Bank Account, License Plate, BHXH, Military ID, Passport |
+| **International PII** | US SSN, Credit Card, IBAN, NHS (UK), Passport (US/EU/UK/JP/KR), IP Address, Email |
+| **Secrets** | OpenAI/Anthropic/AWS/GitHub/Stripe API keys, PEM keys, JWTs, Database connection strings |
+
+### Compliance Validation
+
+Validates skills against regulatory frameworks:
+
+| Framework | Requirements | Risk Levels |
+|-----------|-------------|-------------|
+| **Vietnam AI Law 2026** | Data localization, User consent, Transparency, Human oversight, Data minimization, Right to explanation, Bias prevention | minimal, limited, high, unacceptable |
+| **EU AI Act** | Risk assessment, Data governance, Technical documentation, Record keeping, Transparency | minimal, limited, high, unacceptable |
+| **GDPR** | Lawful basis, Data subject rights, Privacy by design, DPIA, Breach notification, International transfers | minimal, limited, high, unacceptable |
 
 ### `update-db`
 
@@ -150,6 +178,11 @@ Caches to `.cache/skill-audit/feeds/` for offline use.
 | ASI04-01 | Secrets | Hardcoded API keys, tokens, or credentials detected |
 | ASI05-01 | Code Execution | Dynamic code execution without proper sandboxing |
 | ASI02-01 | Exfiltration | Potential data leakage to untrusted endpoints |
+| **PII-001 to PII-039** | **PII Detection** | **Personally Identifiable Information detected (Vietnam CCCD, SSN, Credit Cards, etc.)** |
+| **PEX-01 to PEX-11** | **PII Exfiltration** | **PII being sent to external endpoints - data leak risk** |
+| **VN-AI-001 to VN-AI-007** | **Compliance** | **Vietnam AI Law 2026 requirement not met** |
+| **EU-AI-001 to EU-AI-005** | **Compliance** | **EU AI Act requirement not met** |
+| **GDPR-001 to GDPR-006** | **Compliance** | **GDPR requirement not met** |
 | VULN-* | Dependency | Known vulnerability in skill's dependencies (see CVE ID) |
 
 ## Options

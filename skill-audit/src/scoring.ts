@@ -14,6 +14,8 @@ const CATEGORY_WEIGHTS: Record<string, number> = {
   PI: 1.2,
   BM: 1.0,
   TM: 1.0,
+  PII: 2.5,      // NEW: PII detection - high weight
+  COMP: 1.0,     // NEW: Compliance - medium weight
   SPEC: 0.5,    // Spec errors are less severe than security
   PROV: 0.8,    // Provenance issues
   INTEL: 1.0    // Intelligence findings
@@ -130,15 +132,19 @@ export function createGroupedAuditResult(
   manifest: SkillManifest | undefined,
   specFindings: Finding[],
   securityFindings: Finding[],
+  piiFindings: Finding[],
+  complianceFindings: Finding[],
   intelFindings: Finding[]
 ): GroupedAuditResult {
   // Spec findings get lower weight - they're blockers but not security-critical
   const specScore = calculateRiskScore(specFindings);
   const securityScore = calculateRiskScore(securityFindings);
+  const piiScore = calculateRiskScore(piiFindings);
+  const complianceScore = calculateRiskScore(complianceFindings);
   const intelScore = calculateRiskScore(intelFindings);
 
   // Combined score with weights
-  const totalScore = specScore.total * 0.3 + securityScore.total * 0.5 + intelScore.total * 0.2;
+  const totalScore = specScore.total * 0.2 + securityScore.total * 0.35 + piiScore.total * 0.25 + complianceScore.total * 0.1 + intelScore.total * 0.1;
   const finalScore = Math.min(totalScore, 10.0);
   const riskLevelInfo = getRiskLevel(finalScore);
 
@@ -147,14 +153,22 @@ export function createGroupedAuditResult(
     riskLevelInfo.label === "Risky" ? "risky" :
     riskLevelInfo.label === "Dangerous" ? "dangerous" : "malicious";
 
+  // Calculate compliance score (percentage)
+  const complianceTotal = complianceFindings.length;
+  const compliancePassed = complianceTotal === 0 ? 100 : Math.max(0, 100 - complianceTotal * 10);
+
   return {
     skill,
     manifest,
     specFindings,
     securityFindings,
+    piiFindings,
+    complianceFindings,
     intelFindings,
     riskScore: Math.round(finalScore * 10) / 10,
-    riskLevel
+    riskLevel,
+    complianceScore: compliancePassed,
+    complianceRiskLevel: compliancePassed >= 80 ? 'minimal' : compliancePassed >= 60 ? 'limited' : compliancePassed >= 40 ? 'high' : 'unacceptable'
   };
 }
 

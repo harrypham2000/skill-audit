@@ -28,6 +28,8 @@ Before installing a third-party skill, you need to know:
 - **Code execution** risks (ASI05)
 - **Exfiltration** patterns (ASI02)
 - **Behavioral manipulation** (ASI09)
+- **PII exposure** (ASI03) — 39 patterns for Vietnam and International PII
+- **Compliance violations** — Vietnam AI Law 2026, EU AI Act, GDPR
 - **Dependency vulnerabilities** (CVE/GHSA/KEV/EPSS)
 
 ## Quick Start
@@ -166,6 +168,7 @@ schtasks /create /tn "skill-audit-update" /tr "npx @hungpg/skill-audit --update-
 - **[Anthropic Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)** — SKILL.md specification that `skill-audit` validates against
 
 ### Security & Validation
+- **[AgentVeil](https://github.com/vurakit/agentveil)** — Security proxy for AI agents with PII anonymization, prompt injection protection, and compliance checking. Inspired `skill-audit`'s PII detection patterns and compliance validation framework
 - **[GoClaw](https://github.com/nextlevelbuilder/goclaw)** — Multi-agent gateway with 5-layer security (prompt injection detection, SSRF protection, shell deny patterns). Inspired `skill-audit`'s pattern-based vulnerability detection
 - **[Trivy](https://github.com/aquasecurity/trivy)** — Vulnerability scanner used by `skill-audit` for dependency CVE scanning
 

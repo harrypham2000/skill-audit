@@ -1,8 +1,9 @@
 import { readFileSync } from "fs";
 import { basename, extname } from "path";
 import matter from "gray-matter";
-import { SkillInfo, SkillManifest, Finding } from "./types.js";
+import { SkillInfo, SkillManifest, Finding, GroupedAuditResult } from "./types.js";
 import { resolveSkillPath, getSkillFiles } from "./discover.js";
+import { checkCompliance, complianceToFindings, getComplianceSummary, ComplianceReport } from "./compliance.js";
 
 // ============================================================
 // PROMPT INJECTION PATTERNS (ASI01 - Goal Hijacking)
@@ -178,7 +179,7 @@ function getASIXXFromId(id: string): string {
   return "ASI04";
 }
 
-export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findings: Finding[] } {
+export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findings: Finding[]; complianceReports?: ComplianceReport[] } {
   let resolvedPath: string;
   try {
     resolvedPath = resolveSkillPath(skill.path);
@@ -282,7 +283,12 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
     findings.push(...validateSkillSpec(manifest, resolvedPath, basename(resolvedPath)));
   }
 
-  return { manifest, findings };
+  // NEW: Compliance checks
+  const complianceReports = checkCompliance(resolvedPath, manifest);
+  const complianceFindings = complianceToFindings(complianceReports, resolvedPath);
+  findings.push(...complianceFindings);
+
+  return { manifest, findings, complianceReports };
 }
 
 // Validate skill against Agent Skills specification
