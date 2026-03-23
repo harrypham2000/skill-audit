@@ -5,7 +5,7 @@ license: MIT
 compatibility: Node.js 18+ with npm or yarn
 metadata:
   repo: https://github.com/harrypham2000/skill-audit
-  version: 0.5.1
+  version: 0.5.2
 allowed-tools:
   - skill:exec
   - skill:read
@@ -15,6 +15,10 @@ allowed-tools:
 # skill-audit
 
 Security auditing CLI for AI agent skills with **PII detection** and **compliance validation**.
+
+## What's New in v0.5.2
+
+- 🔧 **Workflow Fixes**: Fixed GitHub Actions release workflow
 
 ## What's New in v0.5.1
 
