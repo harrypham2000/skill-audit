@@ -5,7 +5,7 @@ license: MIT
 compatibility: Node.js 18+ with npm or yarn
 metadata:
   repo: https://github.com/harrypham2000/skill-audit
-  version: 0.4.0
+  version: 0.5.0
 allowed-tools:
   - skill:exec
   - skill:read
@@ -16,8 +16,9 @@ allowed-tools:
 
 Security auditing CLI for AI agent skills with **PII detection** and **compliance validation**.
 
-## What's New in v0.4.0
+## What's New in v0.5.0
 
+- ⚡ **Auto-Update Intelligence Feeds**: Vulnerability databases (KEV, EPSS, NVD) now update automatically when the skill is loaded in audit mode - no manual `--update-db` needed
 - 🔐 **PII Detection**: 39 patterns for Vietnam and International PII (CCCD, SSN, Credit Cards, API Keys, etc.)
 - 📋 **Compliance Validation**: Checks against Vietnam AI Law 2026, EU AI Act, and GDPR
 - 🚨 **PII-Aware Exfiltration Detection**: Detects when PII is being sent to external endpoints

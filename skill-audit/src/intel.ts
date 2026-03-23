@@ -256,7 +256,7 @@ export function isCacheStale(source: string): { stale: boolean; age?: number; wa
 /**
  * Save advisory records to cache
  */
-function saveToCache(source: string, records: AdvisoryRecord[]): void {
+export function saveToCache(source: string, records: AdvisoryRecord[]): void {
   const cachePath = getCachePath(source);
   const metaPath = getMetaPath(source);
 

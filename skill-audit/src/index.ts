@@ -7,6 +7,7 @@ import { validateSkillSpec, SpecValidationResult } from "./spec.js";
 import { createGroupedAuditResult } from "./scoring.js";
 import { scanDependencies } from "./deps.js";
 import { getKEV, getEPSS, getNVD, isCacheStale, downloadOfflineDB } from "./intel.js";
+import { ensureIntelFeedsFresh } from "./auto-update.js";
 import { installHook, uninstallHook, getHookStatus, getDefaultHookConfig } from "./hooks.js";
 import { writeFileSync } from "fs";
 import { Finding, GroupedAuditResult } from "./types.js";
@@ -107,6 +108,11 @@ if (options.uninstallHook) {
 // Default to global skills
 const scope = options.project ? "project" : "global";
 const mode = options.mode || "audit";
+
+// Auto-update intelligence feeds in background (silent)
+if (mode === "audit") {
+  ensureIntelFeedsFresh(); // Fire and forget - non-blocking
+}
 
 if (!options.json) {
   console.log(mode === "lint" 
