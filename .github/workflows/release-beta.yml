@@ -76,14 +76,18 @@ jobs:
       - name: Configure npm
         run: |
           npm config set //registry.npmjs.org/:_authToken $NPM_TOKEN
-          npm config set otp false
           npm whoami
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm (beta tag)
         working-directory: ./skill-audit
-        run: npm publish --tag beta --access public --provenance
+        run: |
+          npm config set //registry.npmjs.org/:_authToken $NPM_TOKEN
+          npm config set otp false
+          npm publish --tag beta --access public --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Pre-release
         uses: ncipollo/release-action@v1
