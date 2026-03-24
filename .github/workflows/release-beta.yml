@@ -31,7 +31,6 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          always-auth: true
 
       - name: Install dependencies
         working-directory: ./skill-audit
