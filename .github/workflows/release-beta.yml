@@ -31,7 +31,6 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          always-auth: true
 
       - name: Install dependencies
         working-directory: ./skill-audit
@@ -83,7 +82,12 @@ jobs:
 
       - name: Publish to npm (beta tag)
         working-directory: ./skill-audit
-        run: npm publish --tag beta --access public
+        run: |
+          npm config set //registry.npmjs.org/:_authToken $NPM_TOKEN
+          npm config set otp false
+          npm publish --tag beta --access public --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Pre-release
         uses: ncipollo/release-action@v1

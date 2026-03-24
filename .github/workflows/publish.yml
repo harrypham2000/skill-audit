@@ -57,6 +57,10 @@ jobs:
           fi
           echo "Version match confirmed: $PACKAGE_VERSION"
 
+      - name: Configure npm for CI/CD
+        run: |
+          npm config set otp false
+
       - name: Publish to npm
         working-directory: ./skill-audit
         run: npm publish --provenance --access public
