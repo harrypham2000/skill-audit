@@ -1,0 +1,15 @@
+# Skip test files to avoid false positives from intentional malicious patterns
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+test/
+tests/
+__tests__/
+
+# Skip build output
+dist/
+node_modules/
+
+# Skip scripts (may contain test patterns)
+scripts/

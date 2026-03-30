@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { discoverSkills } from "./discover.js";
+import { discoverSkills, getGlobalConfig } from "./discover.js";
 import { auditSecurity, SecurityAuditResult } from "./security.js";
 import { validateSkillSpec, SpecValidationResult } from "./spec.js";
 import { createGroupedAuditResult } from "./scoring.js";
@@ -22,6 +22,7 @@ program
   .option("-g, --global", "Audit global skills only (default: true)")
   .option("-p, --project", "Audit project-level skills only")
   .option("-a, --agent <agents...>", "Filter by specific agents")
+  .option("-x, --exclude-skill <names...>", "Skills to exclude from audit (by name)")
   .option("-j, --json", "Output as JSON")
   .option("-o, --output <file>", "Save report to file (JSON format)")
   .option("-v, --verbose", "Show detailed findings")
@@ -42,6 +43,14 @@ program
 program.parse(process.argv);
 
 const options = program.opts();
+
+// Load global config (~/.skill-audit/config.json) and merge with CLI options
+const globalConfig = getGlobalConfig();
+
+// Merge excludeSkills from config with CLI options
+const excludeSkillsFromConfig = globalConfig.excludeSkills || [];
+const excludeSkillsFromCLI = options.excludeSkill || [];
+const allExcludeSkills = [...new Set([...excludeSkillsFromConfig, ...excludeSkillsFromCLI])];
 
 // Handle download-offline-db action
 if (options.downloadOfflineDb) {
@@ -127,6 +136,13 @@ let filteredSkills = skills;
 if (options.agent && options.agent.length > 0) {
   filteredSkills = skills.filter(s =>
     s.agents.some(a => options.agent.includes(a))
+  );
+}
+
+// Filter by excluded skills (from config + CLI)
+if (allExcludeSkills.length > 0) {
+  filteredSkills = filteredSkills.filter(s =>
+    !allExcludeSkills.includes(s.name)
   );
 }
 
