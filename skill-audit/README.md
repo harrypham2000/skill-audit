@@ -65,6 +65,20 @@ npm install && npm run build
 bun install && bun run build
 ```
 
+## About the Postinstall Script
+
+This package includes a `postinstall` script that runs automatically after `npm install`. **This script is completely safe and informational only:**
+
+- ✅ Does NOT automatically install any hooks
+- ✅ Does NOT execute any code that could be considered malicious
+- ✅ Does NOT make any network requests
+- ✅ Does NOT modify any files without user consent
+- ✅ Does NOT collect any user data
+
+The script simply displays a banner message prompting users to optionally run `skill-audit --install-hook` if they want to set up automatic skill auditing. Users must manually run this command to install the hook.
+
+In CI environments (GitHub Actions, GitLab CI, Jenkins, etc.), the script exits silently without displaying anything.
+
 ## Automatic Hook Setup
 
 After installation, you'll see a message about setting up the PreToolUse hook:

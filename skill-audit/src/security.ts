@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { basename, extname } from "path";
 import { SkillInfo, SkillManifest, Finding } from "./types.js";
 import { resolveSkillPath, getSkillFiles } from "./discover.js";
+import { isDocumentedSafeLifecycleScript } from "./lifecycle-safety.js";
 import { loadAndCompile, hasPatternsFile, getPatternMetadata, CompiledPattern } from "./patterns.js";
 
 /**
@@ -211,6 +212,10 @@ const TRUSTED_PROTOCOLS = ['https:', 'git:'];
 function isCodeFile(filename: string): boolean {
   const codeExtensions = [".sh", ".bash", ".py", ".js", ".ts", ".tsx", ".jsx", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".cs", ".php", ".yaml", ".yml"];
   return codeExtensions.includes(extname(filename).toLowerCase());
+}
+
+function isKnownSafeScript(filePath: string, content: string): boolean {
+  return isDocumentedSafeLifecycleScript(filePath, content);
 }
 
 function getCategoryFromId(id: string): string {
@@ -425,12 +430,14 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
   const files = getSkillFiles(resolvedPath);
   const findings: Finding[] = [];
   const unreadableFiles: string[] = [];
+  const fileContents = new Map<string, string>();
 
   for (const file of files) {
     const filename = basename(file);
 
     try {
       const content = readFileSync(file, "utf-8");
+      fileContents.set(file, content);
 
       if (filename === "SKILL.md" || filename === "SKILL.md") {
         // Use external patterns if available, otherwise use hardcoded
@@ -518,5 +525,14 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
     findings.push(...checkProvenance(manifest.origin, resolvedPath));
   }
 
-  return { findings, unreadableFiles };
+  // Filter out findings from known-safe scripts (e.g., postinstall informational scripts)
+  const filteredFindings = findings.filter(f => {
+    if (!isKnownSafeScript(f.file, fileContents.get(f.file) || "")) {
+      return true;
+    }
+
+    return !(f.id.startsWith("CE") || f.id.startsWith("EX") || f.id.startsWith("SC") || f.id.startsWith("TM"));
+  });
+
+  return { findings: filteredFindings, unreadableFiles };
 }

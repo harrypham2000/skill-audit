@@ -6,6 +6,14 @@
 .gemini_security/
 QWEN.md
 
+# MCP and agent config
+.mcp.json
+.codemogger/
+
+# Claude Code project memory
+**/CLAUDE.md
+**/CLAUDE.local.md
+
 # Documentation (non-essential)
 AI Agent Skill Security Auditing Plan for the Vercel Skills Ecosystem.md
 PLAN.md

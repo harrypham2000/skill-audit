@@ -3,6 +3,7 @@ import { basename, extname } from "path";
 import matter from "gray-matter";
 import { SkillInfo, SkillManifest, Finding, GroupedAuditResult } from "./types.js";
 import { resolveSkillPath, getSkillFiles } from "./discover.js";
+import { isDocumentedSafeLifecycleScript } from "./lifecycle-safety.js";
 import { checkCompliance, complianceToFindings, getComplianceSummary, ComplianceReport } from "./compliance.js";
 
 // ============================================================
@@ -134,6 +135,10 @@ function isCodeFile(filename: string): boolean {
   return codeExtensions.includes(extname(filename).toLowerCase());
 }
 
+function isKnownSafeScript(filePath: string, content: string): boolean {
+  return isDocumentedSafeLifecycleScript(filePath, content);
+}
+
 function scanContent(content: string, file: string, patterns: Array<{pattern: RegExp, id: string, severity?: string, message: string}>): Finding[] {
   const findings: Finding[] = [];
   const lines = content.split("\n");
@@ -200,6 +205,7 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
   const files = getSkillFiles(resolvedPath);
   const findings: Finding[] = [];
   const unreadableFiles: string[] = [];
+  const fileContents = new Map<string, string>();
   let manifest: SkillManifest | undefined;
 
   for (const file of files) {
@@ -207,6 +213,7 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
 
     try {
       const content = readFileSync(file, "utf-8");
+      fileContents.set(file, content);
 
       if (filename === "SKILL.md" || filename === "AGENTS.md") {
         // Parse frontmatter
@@ -288,7 +295,16 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
   const complianceFindings = complianceToFindings(complianceReports, resolvedPath);
   findings.push(...complianceFindings);
 
-  return { manifest, findings, complianceReports };
+  // Filter out findings from known-safe scripts (e.g., postinstall informational scripts)
+  const filteredFindings = findings.filter(f => {
+    if (!isKnownSafeScript(f.file, fileContents.get(f.file) || "")) {
+      return true;
+    }
+
+    return !(f.id.startsWith("CE") || f.id.startsWith("EX") || f.id.startsWith("SC") || f.id.startsWith("TM"));
+  });
+
+  return { manifest, findings: filteredFindings, complianceReports };
 }
 
 // Validate skill against Agent Skills specification
