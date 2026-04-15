@@ -93,7 +93,35 @@
         { "pattern": "os\\.system\\s*\\(", "id": "CE-008", "severity": "high", "message": "os.system() call - shell injection risk" },
         { "pattern": "child_process.*exec\\s*\\(", "id": "CE-009", "severity": "medium", "message": "child_process.exec - verify input sanitization" },
         { "pattern": "chmod\\s+[47]777", "id": "CE-010", "severity": "high", "message": "World-writable permissions" },
-        { "pattern": "process\\.fork\\s*\\(|child_process\\.spawn\\s*\\(|subprocess\\.spawn\\s*\\(", "id": "CE-011", "severity": "high", "message": "Process fork/spawn - potential crypto miner" }
+        { "pattern": "process\\.fork\\s*\\(|child_process\\.spawn\\s*\\(|subprocess\\.spawn\\s*\\(", "id": "CE-011", "severity": "high", "message": "Process fork/spawn - potential crypto miner" },
+        { "pattern": ":\\s*\\|\\s*:\\s*&", "id": "CE-012", "severity": "critical", "message": "Fork bomb (self-pipe-to-background pattern)" },
+        { "pattern": "\\bdd\\b.+\\bof=/dev/", "id": "CE-013", "severity": "critical", "message": "Disk overwrite via dd", "flags": "i" },
+        { "pattern": "\\bmkfs\\b", "id": "CE-014", "severity": "critical", "message": "Filesystem format command", "flags": "i" },
+        { "pattern": "\\bshred\\s", "id": "CE-015", "severity": "critical", "message": "File shredding command", "flags": "i" },
+        { "pattern": "base64\\s+(--decode|-d)\\s*\\|", "id": "CE-016", "severity": "critical", "message": "Base64 decode piped to shell", "flags": "i" },
+        { "pattern": "eval\\s*\\(\\s*base64", "id": "CE-017", "severity": "critical", "message": "Eval of base64-encoded payload", "flags": "i" },
+        { "pattern": "eval\\s*\\$\\s*\\(", "id": "CE-018", "severity": "critical", "message": "Eval of subshell output", "flags": "i" },
+        { "pattern": "python[23]?\\s+-c\\s+.{0,40}exec\\s*\\(", "id": "CE-019", "severity": "critical", "message": "Python exec injection", "flags": "i" },
+        { "pattern": "__import__\\s*\\(\\s*['\"]os['\"]", "id": "CE-020", "severity": "critical", "message": "Python os import obfuscation", "flags": "i" },
+        { "pattern": "\\bsudo\\s", "id": "CE-021", "severity": "critical", "message": "Sudo usage", "flags": "i" },
+        { "pattern": "\\bchmod\\s+[0-7]*[2367]\\b", "id": "CE-022", "severity": "critical", "message": "World-writable chmod (others write bit set)", "flags": "i" },
+        { "pattern": "\\bchown\\s+root\\b", "id": "CE-023", "severity": "critical", "message": "Chown to root", "flags": "i" }
+      ]
+    },
+    "sqlInjection": {
+      "name": "SQL Injection (ASI06)",
+      "description": "Detects destructive SQL commands",
+      "patterns": [
+        { "pattern": "\\bDROP\\s+TABLE\\b", "id": "SQL-001", "severity": "critical", "message": "SQL DROP TABLE", "flags": "i" },
+        { "pattern": "\\bTRUNCATE\\s+TABLE\\b", "id": "SQL-002", "severity": "critical", "message": "SQL TRUNCATE TABLE", "flags": "i" },
+        { "pattern": "\\bDROP\\s+DATABASE\\b", "id": "SQL-003", "severity": "critical", "message": "SQL DROP DATABASE", "flags": "i" }
+      ]
+    },
+    "pathTraversal": {
+      "name": "Path Traversal (ASI07)",
+      "description": "Detects directory traversal attempts",
+      "patterns": [
+        { "pattern": "\\.\\./\\.\\./\\.\\./", "id": "PT-001", "severity": "critical", "message": "Deep path traversal (../../..)" }
       ]
     },
     "exfiltration": {
