@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
 [![License](https://img.shields.io/npm/l/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
 
-Security auditing tool for AI agent skills.
+Security auditing tool for AI agent skills and agent execution environments.
 
 > Part of the [Vercel Skills](https://skills.sh) ecosystem — validating skills against the Agent Skills specification and detecting vulnerabilities across OWASP Agentic Top 10 categories.
 
@@ -16,6 +16,8 @@ Before installing a third-party skill, you need to know:
 - Does it leak your API keys or tokens?
 - Does it run dangerous scripts?
 - Are its dependencies vulnerable?
+- Is the local agent shell/config environment already compromised?
+- Did agent hooks, PATH, shell startup files, or MCP/tool configs drift since the last trusted baseline?
 
 `skill-audit` answers these questions automatically.
 
@@ -31,6 +33,8 @@ Before installing a third-party skill, you need to know:
 - **PII exposure** (ASI03) — 39 patterns for Vietnam and International PII
 - **Compliance violations** — Vietnam AI Law 2026, EU AI Act, GDPR
 - **Dependency vulnerabilities** (CVE/GHSA/KEV/EPSS)
+- **Agent environment risks** — suspicious hooks, shell startup files, PATH hijacking, MCP/tool command configs, workspace instruction poisoning, and package lifecycle scripts
+- **Session context gaps** — executable skills that do not declare what agent/session facts they read, require, and write back
 
 ## Quick Start
 
@@ -52,7 +56,100 @@ skill-audit --mode audit -j > audit-results.json
 
 # Fail CI/CD on dangerous skills
 skill-audit -g -t 3.0
+
+# Scan the local agent execution environment before invoking skills
+skill-audit doctor
+
+# Store and compare compact trusted environment context across sessions
+skill-audit trust env
+skill-audit diff-env
+
+# Hook-friendly check for risky shell commands
+skill-audit --check-command "npx skills add owner/repo"
 ```
+
+## Context-Aware Agent Environment Auditing
+
+`skill-audit` is no longer limited to scanning a skill at install time. It can also check the agent environment that will execute skills.
+
+This matters because a clean skill can still be unsafe if the agent runtime is already compromised by a malicious hook, poisoned shell startup file, shadowed binary in `PATH`, risky MCP/tool command config, or dangerous package lifecycle script.
+
+### `skill-audit doctor`
+
+Run a read-only scan of the local agent execution environment:
+
+```bash
+skill-audit doctor
+skill-audit doctor --verbose
+skill-audit doctor --json
+skill-audit doctor --threshold 5 --block
+```
+
+The doctor checks:
+
+- Agent hook/config files for shell-command hooks, remote script execution, unpinned `npx` MCP/tool servers, and secret-like config values
+- Shell startup files for remote script execution, reverse shells, command-shadowing aliases, and exported secrets
+- `PATH` entries and sensitive binaries for workspace-local or world-writable executable resolution
+- Workspace instruction files such as `AGENTS.md`, `CLAUDE.md`, `QWEN.md`, and `GEMINI.md`
+- Workspace package files for risky lifecycle scripts such as `postinstall`, `prepare`, `preinstall`, and `install`
+
+Secret-like evidence is redacted in reports.
+
+### Environment baselines and drift
+
+Agents should not keep full environment history in the prompt window. Instead, `skill-audit` stores a compact trusted baseline outside the conversation:
+
+```bash
+# Save current trusted shell/config state
+skill-audit trust env
+
+# Compare current state against the baseline
+skill-audit diff-env
+
+# Fail automation if environment drift is detected
+skill-audit diff-env --block
+```
+
+The baseline is stored at:
+
+```text
+~/.skill-audit/baselines/environment.json
+```
+
+It records file hashes and redacted finding summaries, not full logs or conversation history.
+
+### Hook-sensitive command assessment
+
+Hooks can call `--check-command` to avoid scanning everything on every shell command. The command is classified first, then environment drift is checked only for sensitive operations:
+
+```bash
+skill-audit --check-command "npm install" --json
+skill-audit --check-command "curl https://example.test/install.sh | bash" --block
+```
+
+Sensitive operations include skill installs, package installs, remote script execution, agent config edits, shell startup edits, and executable permission changes.
+
+## Session Context Contracts
+
+Executable skills can optionally declare how they interact with agent session context:
+
+```yaml
+context:
+  reads:
+    - user_goal
+    - target_environment
+    - changed_files
+  requires:
+    - explicit_user_intent
+    - confirmation_for_mutating_actions
+  writes:
+    - commands_run
+    - files_changed
+    - verification_result
+  confirmation: on-risk
+```
+
+`skill-audit` treats this as an optional audit extension, not a replacement for Claude/Agent Skills required `name` and `description` frontmatter. Executable skills without this contract receive `CTX-*` findings so agents can identify missing invocation boundaries, confirmation requirements, and write-back summaries.
 
 ## Sample Output
 
@@ -103,7 +200,7 @@ jobs:
 
 | Package | Description |
 |---------|-------------|
-| [`skill-audit`](./skill-audit/) | CLI tool for auditing AI agent skills |
+| [`skill-audit`](./skill-audit/) | CLI tool for auditing AI agent skills and agent execution environments |
 
 ## Risk Scoring
 
@@ -153,6 +250,8 @@ schtasks /create /tn "skill-audit-update" /tr "npx @hungpg/skill-audit --update-
 
 ### For Skill Users
 - Audit third-party skills before installation
+- Check agent hooks, shell config, PATH, and MCP/tool configs before invoking skills
+- Detect environment drift across agent sessions with trusted baselines
 - CI/CD gate for skill installation pipelines
 - Generate security reports for compliance
 
@@ -178,4 +277,3 @@ schtasks /create /tn "skill-audit-update" /tr "npx @hungpg/skill-audit --update-
 ## License
 
 MIT
-
