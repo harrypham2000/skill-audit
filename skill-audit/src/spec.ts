@@ -76,6 +76,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     compatibility: parsed.data.compatibility,
     metadata: parsed.data.metadata,
     allowedTools: parsed.data["allowed-tools"],
+    context: parsed.data.context,
     content: parsed.content,
     files: []
   };

@@ -520,6 +520,10 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
     });
   }
 
+  if (manifest) {
+    findings.push(...validateContextContract(manifest, files, resolvedPath));
+  }
+
   // Provenance checks (origin is optional metadata, not spec-required)
   if (manifest?.origin) {
     findings.push(...checkProvenance(manifest.origin, resolvedPath));
@@ -535,4 +539,92 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
   });
 
   return { findings: filteredFindings, unreadableFiles };
+}
+
+function validateContextContract(manifest: SkillManifest, files: string[], resolvedPath: string): Finding[] {
+  if (!skillCanExecute(manifest, files)) return [];
+
+  const skillFile = `${resolvedPath}/SKILL.md`;
+  const context = manifest.context;
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return [{
+      id: "CTX-001",
+      category: "ENV",
+      asixx: "ASI05",
+      severity: "medium",
+      file: skillFile,
+      message: "Executable skill does not declare a session context contract",
+      recommendation: "Add frontmatter context.reads, context.requires, context.writes, and confirmation fields so agents can reason before invoking shell/tool behavior."
+    }];
+  }
+
+  const contract = context as Record<string, unknown>;
+  const findings: Finding[] = [];
+  if (!Array.isArray(contract.reads)) {
+    findings.push({
+      id: "CTX-002",
+      category: "ENV",
+      asixx: "ASI01",
+      severity: "low",
+      file: skillFile,
+      message: "Context contract does not declare what session facts the skill reads",
+      recommendation: "Declare context.reads with narrow fields such as user_goal, target_environment, or changed_files."
+    });
+  }
+  if (!Array.isArray(contract.requires)) {
+    findings.push({
+      id: "CTX-003",
+      category: "ENV",
+      asixx: "ASI05",
+      severity: "medium",
+      file: skillFile,
+      message: "Context contract does not declare invocation preconditions",
+      recommendation: "Declare context.requires for required user intent, approvals, clean worktree, or verification status."
+    });
+  }
+  if (!Array.isArray(contract.writes)) {
+    findings.push({
+      id: "CTX-004",
+      category: "ENV",
+      asixx: "ASI05",
+      severity: "low",
+      file: skillFile,
+      message: "Context contract does not declare what should be remembered after execution",
+      recommendation: "Declare context.writes with compact summary fields such as commands_run, files_changed, and verification_result."
+    });
+  }
+  if (!contract.confirmation) {
+    findings.push({
+      id: "CTX-005",
+      category: "ENV",
+      asixx: "ASI05",
+      severity: "medium",
+      file: skillFile,
+      message: "Context contract does not declare a confirmation boundary",
+      recommendation: "Declare confirmation: never, on-risk, or always for shell/tool execution."
+    });
+  }
+
+  const reads = Array.isArray(contract.reads) ? contract.reads.map(String) : [];
+  if (reads.some(read => /full[_ -]?conversation|all[_ -]?context|all[_ -]?files/i.test(read))) {
+    findings.push({
+      id: "CTX-006",
+      category: "ENV",
+      asixx: "ASI04",
+      severity: "medium",
+      file: skillFile,
+      message: "Context contract asks for overbroad session context",
+      recommendation: "Replace broad context reads with minimum necessary fields."
+    });
+  }
+
+  return findings;
+}
+
+function skillCanExecute(manifest: SkillManifest, files: string[]): boolean {
+  const allowedTools = String(manifest.allowedTools || "");
+  const content = manifest.content;
+  return /bash|shell|terminal|run_shell_command|execute|script/i.test(allowedTools)
+    || /```\s*(bash|sh|shell)|\b(npm|npx|bun|pnpm|python|bash|sh)\s+(install|run|exec|[\w.-]+)/i.test(content)
+    || files.some(file => /(^|\/)(scripts?|bin)\//.test(file));
 }

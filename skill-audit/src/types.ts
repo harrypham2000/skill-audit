@@ -13,6 +13,7 @@ export interface SkillManifest {
   compatibility?: string;
   metadata?: Record<string, string>;
   allowedTools?: string;
+  context?: unknown;
   content: string;
   files: string[];
 }
@@ -30,7 +31,8 @@ export type FindingCategory =
   | 'RA'   // Resource Abuse
   | 'SPEC' // Specification
   | 'PROV' // Provenance
-  | 'INTEL'; // Intelligence
+  | 'INTEL' // Intelligence
+  | 'ENV';  // Agent environment risks
 
 export interface Finding {
   id: string;

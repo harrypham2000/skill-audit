@@ -8,6 +8,8 @@ Security auditing CLI for AI agent skills.
 - **Dependency Scanning**: Uses Trivy to scan for known vulnerabilities in dependencies
 - **Risk Scoring**: 0-10 score mapped to OWASP Agentic Top 10 (ASI01-ASI10)
 - **Multi-Agent Support**: Groups results by agent (Claude Code, Qwen Code, Gemini CLI, etc.)
+- **Agent Environment Doctor**: Detect risky hooks, shell startup files, PATH hijacking, MCP/tool configs, and workspace lifecycle scripts
+- **Session Context Contracts**: Warn when executable skills do not declare what agent/session facts they read, require, and write back
 - **CI/CD Ready**: JSON output, threshold-based pass/fail
 
 ## Installation
@@ -156,9 +158,108 @@ skill-audit --project
 # Lint mode (spec validation only)
 skill-audit --mode lint
 
+# Agent environment scan (hooks, shell, PATH, MCP/tool configs)
+skill-audit doctor
+
+# Save current agent environment as trusted baseline
+skill-audit trust env
+
+# Compare current environment against the trusted baseline
+skill-audit diff-env
+
+# Hook-friendly check for sensitive shell commands
+skill-audit --check-command "npx skills add owner/repo"
+
 # Update vulnerability DB manually
 skill-audit --update-db
 ```
+
+## Agent Environment Doctor
+
+`skill-audit doctor` is a read-only scan of the local agent execution environment. It complements skill auditing by checking whether the shell and agent configuration are safe before any skill is invoked.
+
+It currently checks:
+
+- Agent hook/config files for shell-command hooks, remote script execution, unpinned `npx` MCP/tool servers, and secrets in config
+- Shell startup files for remote script execution, reverse shells, command-shadowing aliases, and exported secrets
+- `PATH` entries and sensitive binaries for workspace-local or world-writable executable resolution
+- Workspace instruction files (`AGENTS.md`, `CLAUDE.md`, `QWEN.md`, `GEMINI.md`) for prompt-injection style directives
+- Workspace package files for risky lifecycle scripts such as `postinstall`, `prepare`, `preinstall`, and `install`
+
+Examples:
+
+```bash
+# Human-readable environment report
+skill-audit doctor
+
+# Full evidence and recommendations
+skill-audit doctor --verbose
+
+# JSON output for automation
+skill-audit doctor --json
+
+# Block automation if environment risk exceeds a threshold
+skill-audit doctor --threshold 5 --block
+```
+
+Secret-like evidence is redacted in reports. The doctor mode does not modify files.
+
+### Environment baselines and drift
+
+Use a baseline when you want agents to keep a compact, durable understanding of the trusted shell/config state across sessions:
+
+```bash
+# Record hashes and redacted findings for the current environment
+skill-audit trust env
+
+# Detect changed files, new findings, and resolved findings since baseline
+skill-audit diff-env
+
+# Fail automation if drift is detected
+skill-audit diff-env --block
+```
+
+The baseline is stored at `~/.skill-audit/baselines/environment.json`. It records file hashes and redacted finding summaries, not full conversation history.
+
+### Hook-sensitive command assessment
+
+Hooks can call `--check-command` to avoid scanning everything on every shell command. The command is classified first, and environment drift is checked only for sensitive commands such as skill installs, package installs, remote script execution, agent config edits, shell startup edits, and executable permission changes.
+
+```bash
+skill-audit --check-command "npm install" --json
+skill-audit --check-command "curl https://example.test/install.sh | bash" --block
+```
+
+## Session Context Contracts
+
+Executable skills can declare how they interact with agent session context. `skill-audit` warns when a skill can run shell/tool behavior but does not declare this contract.
+
+Example frontmatter:
+
+```yaml
+context:
+  reads:
+    - user_goal
+    - target_environment
+    - changed_files
+  requires:
+    - explicit_user_intent
+    - confirmation_for_mutating_actions
+  writes:
+    - commands_run
+    - files_changed
+    - verification_result
+  confirmation: on-risk
+```
+
+Context checks include:
+
+- `CTX-001`: executable skill has no context contract
+- `CTX-002`: missing declared session facts read by the skill
+- `CTX-003`: missing invocation preconditions
+- `CTX-004`: missing write-back summary fields
+- `CTX-005`: missing confirmation boundary
+- `CTX-006`: overbroad context reads such as full conversation or all files
 
 ## Options
 
@@ -166,11 +267,12 @@ skill-audit --update-db
 |------|-------------|---------|
 | `-g, --global` | Audit global skills | ✓ |
 | `-p, --project` | Audit project-level skills | |
-| `--mode <lint|audit>` | Lint (spec) or full audit | audit |
+| `--mode <lint|audit|doctor>` | Lint (spec), full audit, or agent environment scan | audit |
 | `-t, --threshold <score>` | Fail if risk > threshold | 7.0 |
 | `-j, --json` | JSON output | |
 | `-o, --output <file>` | Save to file | |
 | `--no-deps` | Skip dependency scan | |
+| `--check-command <command>` | Classify a shell command and check environment drift if sensitive | |
 | `-v, --verbose` | Verbose output | |
 | `--install-hook` | Install PreToolUse hook | |
 | `--uninstall-hook` | Remove PreToolUse hook | |
@@ -258,3 +360,52 @@ Note: NVD API rate limits apply (5 requests/30 sec without API key). Set `NVD_AP
 
 **Offline mode**: Cached feeds work offline. Re-run audit with existing cache.
 
+## Publishing
+
+This package is published to npm and uses GitHub Actions for CI/CD.
+
+### Release Process
+
+The project uses conventional commits with Auto Release workflow:
+
+1. **Make changes** and commit with conventional format:
+   - `feat: description` → minor version bump
+   - `fix: description` → patch version bump
+   - `BREAKING CHANGE: description` → major version bump
+
+2. **Push to main** - triggers Auto Release workflow which:
+   - Determines version bump based on commits
+   - Updates package.json
+   - Creates git tag
+   - Creates GitHub Release
+   - Triggers publish.yml to publish to npm
+
+### Manual Publish
+
+If automation fails:
+
+```bash
+# Bump version
+npm version minor -m "release: v%s"
+
+# Build and publish
+npm run build
+npm publish --access public
+
+# Push tag
+git push origin main --follow-tags
+```
+
+### npm Token Setup
+
+For CI/CD publishing, generate an npm token without 2FA:
+1. Go to: https://www.npmjs.com/settings/-/tokens
+2. Create "Automation" token (no 2FA)
+3. Add to GitHub: Repository → Settings → Secrets → NPM_TOKEN
+
+### Common Issues
+
+| Error | Solution |
+|-------|----------|
+| EOTP (one-time password) | Regenerate npm token without 2FA |
+| Version mismatch | Ensure tag points to correct commit |

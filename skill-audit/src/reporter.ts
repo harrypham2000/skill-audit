@@ -37,6 +37,7 @@ const CATEGORY_COLORS: Record<FindingCategory, string> = {
   "SPEC": "\x1b[90m", // Specification - Gray
   "PROV": "\x1b[33m", // Provenance - Yellow
   "INTEL": "\x1b[90m", // Intelligence - Gray
+  "ENV": "\x1b[35m",  // Agent environment - Magenta
 };
 
 const RESET = "\x1b[0m";
