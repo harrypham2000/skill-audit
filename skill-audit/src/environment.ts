@@ -63,37 +63,37 @@ const SENSITIVE_BINARIES = ["node", "npm", "npx", "bun", "pnpm", "git", "ssh", "
 type PatternRule = {
   id: string;
   severity: Finding["severity"];
-  asixx: string;
+  asi: string;
   message: string;
   pattern: RegExp;
   recommendation?: string;
 };
 
 const SHELL_RULES: PatternRule[] = [
-  { id: "ENV-SHELL-001", severity: "critical", asixx: "ASI05", message: "Shell startup fetches remote script into an interpreter", pattern: /(curl|wget)[^\n|]*\|\s*(sh|bash|python|perl)/i, recommendation: "Remove remote shell execution from startup files." },
-  { id: "ENV-SHELL-002", severity: "critical", asixx: "ASI05", message: "Reverse shell pattern in shell startup file", pattern: /(bash\s+-i\s+.*\/dev\/tcp|nc\s+-[elv]|netcat\s+-[elv])/i },
-  { id: "ENV-SHELL-003", severity: "high", asixx: "ASI05", message: "Shell alias overrides a sensitive command", pattern: /alias\s+(npm|npx|node|git|ssh|curl|wget|python|bash|sh)=/i, recommendation: "Review aliases that shadow common development and network tools." },
-  { id: "ENV-SHELL-004", severity: "medium", asixx: "ASI04", message: "Shell startup exports a likely secret", pattern: /export\s+\w*(TOKEN|SECRET|PASSWORD|API_KEY)\w*=/i, recommendation: "Avoid storing credentials directly in shell startup files." },
+  { id: "ENV-SHELL-001", severity: "critical", asi: "ASI05", message: "Shell startup fetches remote script into an interpreter", pattern: /(curl|wget)[^\n|]*\|\s*(sh|bash|python|perl)/i, recommendation: "Remove remote shell execution from startup files." },
+  { id: "ENV-SHELL-002", severity: "critical", asi: "ASI05", message: "Reverse shell pattern in shell startup file", pattern: /(bash\s+-i\s+.*\/dev\/tcp|nc\s+-[elv]|netcat\s+-[elv])/i },
+  { id: "ENV-SHELL-003", severity: "high", asi: "ASI05", message: "Shell alias overrides a sensitive command", pattern: /alias\s+(npm|npx|node|git|ssh|curl|wget|python|bash|sh)=/i, recommendation: "Review aliases that shadow common development and network tools." },
+  { id: "ENV-SHELL-004", severity: "medium", asi: "ASI04", message: "Shell startup exports a likely secret", pattern: /export\s+\w*(TOKEN|SECRET|PASSWORD|API_KEY)\w*=/i, recommendation: "Avoid storing credentials directly in shell startup files." },
 ];
 
 const AGENT_CONFIG_RULES: PatternRule[] = [
-  { id: "ENV-HOOK-001", severity: "high", asixx: "ASI05", message: "Agent hook executes a shell command", pattern: /"(PreToolUse|PostToolUse|hooks?)"[\s\S]{0,800}"command"\s*:/i, recommendation: "Verify hook commands are expected, pinned, and documented." },
-  { id: "ENV-HOOK-002", severity: "critical", asixx: "ASI05", message: "Agent config contains remote script execution", pattern: /(curl|wget)[^\n|]*\|\s*(sh|bash|python|perl)/i },
-  { id: "ENV-MCP-001", severity: "medium", asixx: "ASI02", message: "MCP/tool server uses unpinned npx latest-style execution", pattern: /"command"\s*:\s*"npx"[\s\S]{0,400}(@latest|"latest"|\s-y\s)/i, recommendation: "Pin MCP/tool package versions instead of using latest or implicit installs." },
-  { id: "ENV-SECRET-001", severity: "high", asixx: "ASI04", message: "Agent config appears to contain a secret value", pattern: /"\w*(TOKEN|SECRET|PASSWORD|API_KEY)\w*"\s*:\s*"[^"$][^"]{8,}"/i, recommendation: "Move secrets to a secret manager or environment source outside agent config." },
+  { id: "ENV-HOOK-001", severity: "high", asi: "ASI05", message: "Agent hook executes a shell command", pattern: /"(PreToolUse|PostToolUse|hooks?)"[\s\S]{0,800}"command"\s*:/i, recommendation: "Verify hook commands are expected, pinned, and documented." },
+  { id: "ENV-HOOK-002", severity: "critical", asi: "ASI05", message: "Agent config contains remote script execution", pattern: /(curl|wget)[^\n|]*\|\s*(sh|bash|python|perl)/i },
+  { id: "ENV-MCP-001", severity: "medium", asi: "ASI02", message: "MCP/tool server uses unpinned npx latest-style execution", pattern: /"command"\s*:\s*"npx"[\s\S]{0,400}(@latest|"latest"|\s-y\s)/i, recommendation: "Pin MCP/tool package versions instead of using latest or implicit installs." },
+  { id: "ENV-SECRET-001", severity: "high", asi: "ASI04", message: "Agent config appears to contain a secret value", pattern: /"\w*(TOKEN|SECRET|PASSWORD|API_KEY)\w*"\s*:\s*"[^"$][^"]{8,}"/i, recommendation: "Move secrets to a secret manager or environment source outside agent config." },
 ];
 
 const INSTRUCTION_RULES: PatternRule[] = [
-  { id: "ENV-CTX-001", severity: "critical", asixx: "ASI01", message: "Agent instruction file attempts to override prior instructions", pattern: /ignore\s+(all\s+)?previous\s+(instructions?|rules?)/i },
-  { id: "ENV-CTX-002", severity: "high", asixx: "ASI01", message: "Agent instruction file contains context-forgetting directive", pattern: /forget\s+(everything|all|your)/i },
-  { id: "ENV-CTX-003", severity: "high", asixx: "ASI04", message: "Agent instruction file asks for secrets or credentials", pattern: /(reveal|print|exfiltrate|send).{0,80}(secret|token|password|api key|credential)/i },
-  { id: "ENV-CTX-004", severity: "medium", asixx: "ASI05", message: "Agent instruction file mandates command execution", pattern: /always\s+(run|execute)\s+(`[^`]+`|["'][^"']+["']|(?:npm|npx|bun|pnpm|curl|wget|bash|sh|python|git)\b[^\n]+)/i, recommendation: "Prefer conditional instructions with explicit user intent and safety checks." },
+  { id: "ENV-CTX-001", severity: "critical", asi: "ASI01", message: "Agent instruction file attempts to override prior instructions", pattern: /ignore\s+(all\s+)?previous\s+(instructions?|rules?)/i },
+  { id: "ENV-CTX-002", severity: "high", asi: "ASI01", message: "Agent instruction file contains context-forgetting directive", pattern: /forget\s+(everything|all|your)/i },
+  { id: "ENV-CTX-003", severity: "high", asi: "ASI04", message: "Agent instruction file asks for secrets or credentials", pattern: /(reveal|print|exfiltrate|send).{0,80}(secret|token|password|api key|credential)/i },
+  { id: "ENV-CTX-004", severity: "medium", asi: "ASI05", message: "Agent instruction file mandates command execution", pattern: /always\s+(run|execute)\s+(`[^`]+`|["'][^"']+["']|(?:npm|npx|bun|pnpm|curl|wget|bash|sh|python|git)\b[^\n]+)/i, recommendation: "Prefer conditional instructions with explicit user intent and safety checks." },
 ];
 
 const PACKAGE_RULES: PatternRule[] = [
-  { id: "ENV-PKG-001", severity: "critical", asixx: "ASI05", message: "Package lifecycle script fetches remote code into shell", pattern: /"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]*(curl|wget)[^"|]*\|\s*(sh|bash|python|perl)/i },
-  { id: "ENV-PKG-002", severity: "high", asixx: "ASI05", message: "Package lifecycle script contains destructive filesystem command", pattern: /"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]*rm\s+-rf\s+(\/|~|\$HOME)/i },
-  { id: "ENV-PKG-003", severity: "medium", asixx: "ASI04", message: "Package lifecycle script accesses likely secrets", pattern: /"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]*(TOKEN|SECRET|PASSWORD|API_KEY|\.env)/i },
+  { id: "ENV-PKG-001", severity: "critical", asi: "ASI05", message: "Package lifecycle script fetches remote code into shell", pattern: /"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]*(curl|wget)[^"|]*\|\s*(sh|bash|python|perl)/i },
+  { id: "ENV-PKG-002", severity: "high", asi: "ASI05", message: "Package lifecycle script contains destructive filesystem command", pattern: /"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]*rm\s+-rf\s+(\/|~|\$HOME)/i },
+  { id: "ENV-PKG-003", severity: "medium", asi: "ASI04", message: "Package lifecycle script accesses likely secrets", pattern: /"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]*(TOKEN|SECRET|PASSWORD|API_KEY|\.env)/i },
 ];
 
 const SENSITIVE_COMMAND_PATTERNS = [
@@ -318,7 +318,7 @@ function scanFiles(paths: string[], rules: PatternRule[], findings: Finding[]): 
       findings.push({
         id: rule.id,
         category: "ENV",
-        asixx: rule.asixx,
+        asi: rule.asi,
         severity: rule.severity,
         file: path,
         line: lineOf(content, match.index),
@@ -337,7 +337,7 @@ function scanPath(findings: Finding[], cwd: string, pathValue: string): void {
       findings.push({
         id: "ENV-PATH-001",
         category: "ENV",
-        asixx: "ASI05",
+        asi: "ASI05",
         severity: "high",
         file: entry,
         message: "PATH contains a world-writable directory",
@@ -352,7 +352,7 @@ function scanPath(findings: Finding[], cwd: string, pathValue: string): void {
         findings.push({
           id: "ENV-PATH-002",
           category: "ENV",
-          asixx: "ASI05",
+          asi: "ASI05",
           severity: "high",
           file: resolvedPath,
           message: `${bin} resolves to a world-writable executable path`,
@@ -363,7 +363,7 @@ function scanPath(findings: Finding[], cwd: string, pathValue: string): void {
         findings.push({
           id: "ENV-PATH-003",
           category: "ENV",
-          asixx: "ASI05",
+          asi: "ASI05",
           severity: "medium",
           file: resolvedPath,
           message: `${bin} resolves inside the current workspace`,

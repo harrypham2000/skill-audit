@@ -30,13 +30,13 @@ export interface RiskScore {
     low: number;
   };
   categories: Record<string, number>;
-  asixx: Record<string, number>;
+  asi: Record<string, number>;
 }
 
 export function calculateRiskScore(findings: Finding[]): RiskScore {
   const breakdown = { critical: 0, high: 0, medium: 0, low: 0 };
   const categories: Record<string, number> = {};
-  const asixx: Record<string, number> = {};
+  const asi: Record<string, number> = {};
   
   for (const finding of findings) {
     const severityScore = SEVERITY_SCORES[finding.severity] || 1.0;
@@ -48,8 +48,8 @@ export function calculateRiskScore(findings: Finding[]): RiskScore {
     
     categories[finding.category] = (categories[finding.category] || 0) + 1;
     
-    if (finding.asixx) {
-      asixx[finding.asixx] = (asixx[finding.asixx] || 0) + 1;
+    if (finding.asi) {
+      asi[finding.asi] = (asi[finding.asi] || 0) + 1;
     }
   }
   
@@ -66,7 +66,7 @@ export function calculateRiskScore(findings: Finding[]): RiskScore {
     total: Math.round(total * 10) / 10,
     breakdown,
     categories,
-    asixx
+    asi
   };
 }
 
@@ -82,7 +82,7 @@ export function getRiskLevel(score: number): { label: string; icon: string; colo
   }
 }
 
-export function getOWASPDescription(asixx: string): string {
+export function getOWASPDescription(asi: string): string {
   const descriptions: Record<string, string> = {
     ASI01: "Goal Hijacking - Prompt Injection",
     ASI02: "Tool Misuse and Exploitation",
@@ -95,7 +95,7 @@ export function getOWASPDescription(asixx: string): string {
     ASI09: "Trust Boundary Violation",
     ASI10: "Agent Model Denial of Service"
   };
-  return descriptions[asixx] || asixx;
+  return descriptions[asi] || asi;
 }
 
 export function createAuditResult(

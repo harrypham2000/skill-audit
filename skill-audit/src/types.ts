@@ -37,7 +37,7 @@ export type FindingCategory =
 export interface Finding {
   id: string;
   category: FindingCategory;
-  asixx: string;
+  asi: string;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   file: string;
   line?: number;

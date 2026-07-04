@@ -149,7 +149,7 @@ function scanContent(content: string, file: string, patterns: Array<{pattern: Re
         findings.push({
           id,
           category: getCategoryFromId(id),
-          asixx: getASIXXFromId(id),
+          asi: getAsiFromId(id),
           severity: severity as any,
           file,
           line: i + 1,
@@ -173,7 +173,7 @@ function getCategoryFromId(id: string): "PI" | "BM" | "SC" | "CE" | "TM" | "MC" 
   return "SC";
 }
 
-function getASIXXFromId(id: string): string {
+function getAsiFromId(id: string): string {
   if (id.startsWith("PI")) return "ASI01";  // Prompt injection
   if (id.startsWith("CL")) return "ASI04";  // Credential leaks
   if (id.startsWith("EX")) return "ASI02";  // Exfiltration
@@ -193,7 +193,7 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
       findings: [{
         id: "SCAN-ERR-01",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skill.path,
         message: "Could not resolve skill path",
@@ -260,7 +260,7 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
     findings.push({
       id: "SCAN-ERR-02",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "medium",
       file: resolvedPath,
       message: `Could not read ${unreadableFiles.length} file(s) - security scan incomplete`,
@@ -272,7 +272,7 @@ export function auditSkill(skill: SkillInfo): { manifest?: SkillManifest; findin
     findings.push({
       id: "SCAN-ERR-03",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "medium",
       file: resolvedPath,
       message: "No files found in skill directory - possible empty or inaccessible skill",
@@ -316,7 +316,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
     findings.push({
       id: "SPEC-01",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "critical",
       file: skillPath,
       message: "SKILL.md frontmatter missing required 'name' field"
@@ -327,7 +327,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
       findings.push({
         id: "SPEC-02",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "high",
         file: skillPath,
         message: "name field exceeds 64 character limit: " + manifest.name.length + " chars"
@@ -337,7 +337,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
       findings.push({
         id: "SPEC-03",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "high",
         message: "name field must only contain lowercase letters, numbers, and hyphens",
         file: skillPath
@@ -347,7 +347,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
       findings.push({
         id: "SPEC-04",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "high",
         file: skillPath,
         message: "name field cannot start or end with a hyphen"
@@ -357,7 +357,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
       findings.push({
         id: "SPEC-05",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "high",
         file: skillPath,
         message: "name field cannot contain consecutive hyphens"
@@ -368,7 +368,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
       findings.push({
         id: "SPEC-06",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skillPath,
         message: "name field must match directory name: expected '" + dirName + "', got '" + manifest.name + "'"
@@ -381,7 +381,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
     findings.push({
       id: "SPEC-07",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "critical",
       file: skillPath,
       message: "SKILL.md frontmatter missing required 'description' field"
@@ -390,7 +390,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
     findings.push({
       id: "SPEC-08",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "high",
       file: skillPath,
       message: "description field exceeds 1024 character limit: " + manifest.description.length + " chars"
@@ -402,7 +402,7 @@ function validateSkillSpec(manifest: SkillManifest, skillPath: string, dirName: 
     findings.push({
       id: "SPEC-09",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "medium",
       file: skillPath,
       message: "compatibility field exceeds 500 character limit"
@@ -435,7 +435,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-01",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skillPath,
         message: "Origin is not a URL - cannot verify provenance: " + origin,
@@ -449,7 +449,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-02",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "critical",
         file: skillPath,
         message: "Untrusted protocol in origin - only https and git are allowed: " + url.protocol,
@@ -465,7 +465,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-03",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "high",
         file: skillPath,
         message: "Origin domain is not in trusted list: " + hostname,
@@ -480,7 +480,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-04",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skillPath,
         message: "Origin does not appear to use a pinned ref (commit SHA or tag) - consider pinning for reproducibility",
@@ -492,7 +492,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
     findings.push({
       id: "PROV-ERR-01",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "low",
       file: skillPath,
       message: "Provenance check failed: " + String(e).slice(0, 100),

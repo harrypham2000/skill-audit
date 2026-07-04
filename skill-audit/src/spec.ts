@@ -42,7 +42,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-01",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "critical",
       file: skillPath,
       message: "SKILL.md is required but not found",
@@ -59,7 +59,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-02",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "critical",
       file: skillMdPath,
       message: "Failed to parse SKILL.md frontmatter",
@@ -86,7 +86,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-03",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "critical",
       file: skillMdPath,
       message: "Frontmatter missing required 'name' field"
@@ -97,7 +97,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
       findings.push({
         id: "SPEC-04",
         category: "SPEC",
-        asixx: "SPEC",
+        asi: "SPEC",
         severity: "high",
         file: skillMdPath,
         message: `name exceeds 64 char limit (${manifest.name.length} chars)`
@@ -109,7 +109,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
       findings.push({
         id: "SPEC-05",
         category: "SPEC",
-        asixx: "SPEC",
+        asi: "SPEC",
         severity: "high",
         file: skillMdPath,
         message: "name must only contain lowercase letters, numbers, and hyphens"
@@ -121,7 +121,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
       findings.push({
         id: "SPEC-06",
         category: "SPEC",
-        asixx: "SPEC",
+        asi: "SPEC",
         severity: "high",
         file: skillMdPath,
         message: "name cannot start or end with a hyphen"
@@ -133,7 +133,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
       findings.push({
         id: "SPEC-07",
         category: "SPEC",
-        asixx: "SPEC",
+        asi: "SPEC",
         severity: "high",
         file: skillMdPath,
         message: "name cannot contain consecutive hyphens"
@@ -145,7 +145,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
       findings.push({
         id: "SPEC-08",
         category: "SPEC",
-        asixx: "SPEC",
+        asi: "SPEC",
         severity: "high",
         file: skillMdPath,
         message: `name '${manifest.name}' must match directory '${dirName}'`
@@ -158,7 +158,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-09",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "critical",
       file: skillMdPath,
       message: "Frontmatter missing required 'description' field"
@@ -167,7 +167,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-10",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "high",
       file: skillMdPath,
       message: `description exceeds 1024 char limit (${manifest.description.length} chars)`
@@ -179,7 +179,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-11",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "medium",
       file: skillMdPath,
       message: "license must be a string"
@@ -191,7 +191,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-12",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "medium",
       file: skillMdPath,
       message: "compatibility field exceeds 500 char limit"
@@ -209,7 +209,7 @@ export function validateSkillSpec(skillPath: string, dirName: string): SpecValid
     findings.push({
       id: "SPEC-13",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "info",
       file: skillMdPath,
       message: `SKILL.md has ${lineCount} lines - consider progressive disclosure (typical max ~500)`
@@ -233,7 +233,7 @@ function validateAllowedTools(allowedTools: unknown, filePath: string): Finding[
         findings.push({
           id: "SPEC-14",
           category: "SPEC",
-          asixx: "SPEC",
+          asi: "SPEC",
           severity: "medium",
           file: filePath,
           message: `allowed-tools contains non-string/object: ${typeof tool}`
@@ -244,7 +244,7 @@ function validateAllowedTools(allowedTools: unknown, filePath: string): Finding[
     findings.push({
       id: "SPEC-15",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "medium",
       file: filePath,
       message: "allowed-tools should be an array or undefined"
@@ -278,7 +278,7 @@ function validateDirectoryStructure(skillPath: string): Finding[] {
     findings.push({
       id: "SPEC-16",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "low",
       file: skillPath,
       message: "Could not read skill directory structure",
@@ -293,7 +293,7 @@ function validateDirectoryStructure(skillPath: string): Finding[] {
     findings.push({
       id: "SPEC-17",
       category: "SPEC",
-      asixx: "SPEC",
+      asi: "SPEC",
       severity: "info",
       file: skillPath,
       message: `Found directories: ${foundDirs.join(', ')} - consider scripts/, references/, assets/ for organization`

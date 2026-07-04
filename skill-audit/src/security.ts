@@ -232,7 +232,7 @@ export function getCategoryFromId(id: string): string {
   return "SC";
 }
 
-export function getASIXXFromId(id: string): string {
+export function getAsiFromId(id: string): string {
   if (id.startsWith("PROV")) return "ASI04";
   if (id.startsWith("PII")) return "ASI03";
   if (id.startsWith("PEX")) return "ASI02";
@@ -271,14 +271,14 @@ function scanContent(content: string, file: string, patterns: PatternDef[] | Com
     const severity = 'severity' in patternDef ? patternDef.severity : (patternDef as PatternDef).severity || "medium";
     const message = patternDef.message;
     const category = 'category' in patternDef ? patternDef.category : getCategoryFromId(id);
-    const asixx = 'category' in patternDef ? mapCategoryToASIXX(category) : getASIXXFromId(id);
+    const asi = 'category' in patternDef ? mapCategoryToAsi(category) : getAsiFromId(id);
 
     for (let i = 0; i < lines.length; i++) {
       if (regex.test(lines[i])) {
         findings.push({
           id,
           category: category as any,
-          asixx,
+          asi,
           severity: severity as any,
           file,
           line: i + 1,
@@ -291,7 +291,7 @@ function scanContent(content: string, file: string, patterns: PatternDef[] | Com
   return findings;
 }
 
-function mapCategoryToASIXX(category: string): string {
+function mapCategoryToAsi(category: string): string {
   const map: Record<string, string> = {
     "promptInjection": "ASI01",
     "credentialLeaks": "ASI04",
@@ -332,7 +332,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-01",
         category: "PROV",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skillPath,
         message: "Origin is not a URL - cannot verify provenance",
@@ -345,7 +345,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-02",
         category: "PROV",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "critical",
         file: skillPath,
         message: "Untrusted protocol - only https and git allowed",
@@ -360,7 +360,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-03",
         category: "PROV",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "high",
         file: skillPath,
         message: "Origin domain is not in trusted list",
@@ -373,7 +373,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
       findings.push({
         id: "PROV-04",
         category: "PROV",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skillPath,
         message: "Origin does not use pinned ref (commit SHA or tag)",
@@ -384,7 +384,7 @@ function checkProvenance(origin: string, skillPath: string): Finding[] {
     findings.push({
       id: "PROV-ERR-01",
       category: "PROV",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "low",
       file: skillPath,
       message: "Provenance check failed",
@@ -413,7 +413,7 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
       findings: [{
         id: "SCAN-ERR-01",
         category: "SC",
-        asixx: "ASI04",
+        asi: "ASI04",
         severity: "medium",
         file: skill.path,
         message: "Could not resolve skill path",
@@ -500,7 +500,7 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
     findings.push({
       id: "SCAN-ERR-02",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "medium",
       file: resolvedPath,
       message: `Could not read ${unreadableFiles.length} file(s) - security scan incomplete`,
@@ -512,7 +512,7 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
     findings.push({
       id: "SCAN-ERR-03",
       category: "SC",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "medium",
       file: resolvedPath,
       message: "No files found in skill directory",
@@ -550,7 +550,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     return [{
       id: "CTX-001",
       category: "ENV",
-      asixx: "ASI05",
+      asi: "ASI05",
       severity: "medium",
       file: skillFile,
       message: "Executable skill does not declare a session context contract",
@@ -564,7 +564,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     findings.push({
       id: "CTX-002",
       category: "ENV",
-      asixx: "ASI01",
+      asi: "ASI01",
       severity: "low",
       file: skillFile,
       message: "Context contract does not declare what session facts the skill reads",
@@ -575,7 +575,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     findings.push({
       id: "CTX-003",
       category: "ENV",
-      asixx: "ASI05",
+      asi: "ASI05",
       severity: "medium",
       file: skillFile,
       message: "Context contract does not declare invocation preconditions",
@@ -586,7 +586,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     findings.push({
       id: "CTX-004",
       category: "ENV",
-      asixx: "ASI05",
+      asi: "ASI05",
       severity: "low",
       file: skillFile,
       message: "Context contract does not declare what should be remembered after execution",
@@ -597,7 +597,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     findings.push({
       id: "CTX-005",
       category: "ENV",
-      asixx: "ASI05",
+      asi: "ASI05",
       severity: "medium",
       file: skillFile,
       message: "Context contract does not declare a confirmation boundary",
@@ -610,7 +610,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     findings.push({
       id: "CTX-006",
       category: "ENV",
-      asixx: "ASI04",
+      asi: "ASI04",
       severity: "medium",
       file: skillFile,
       message: "Context contract asks for overbroad session context",

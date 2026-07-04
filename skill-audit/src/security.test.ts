@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCategoryFromId, getASIXXFromId } from "./security.js";
+import { getCategoryFromId, getAsiFromId, auditSecurity } from "./security.js";
 
 describe("getCategoryFromId", () => {
   it("maps PI to Prompt Injection", () => {
@@ -25,18 +25,29 @@ describe("getCategoryFromId", () => {
   });
 });
 
-describe("getASIXXFromId", () => {
+describe("getAsiFromId", () => {
   it("maps PI to ASI01", () => {
-    expect(getASIXXFromId("PI-001")).toBe("ASI01");
+    expect(getAsiFromId("PI-001")).toBe("ASI01");
   });
   it("maps PII to ASI03 (not shadowed by PI)", () => {
     // Before the fix this returned "ASI01" — the PI check shadowed the PII check.
-    expect(getASIXXFromId("PII-001")).toBe("ASI03");
+    expect(getAsiFromId("PII-001")).toBe("ASI03");
   });
   it("maps PEX to ASI02", () => {
-    expect(getASIXXFromId("PEX01")).toBe("ASI02");
+    expect(getAsiFromId("PEX01")).toBe("ASI02");
   });
   it("maps PROV to ASI04", () => {
-    expect(getASIXXFromId("PROV-01")).toBe("ASI04");
+    expect(getAsiFromId("PROV-01")).toBe("ASI04");
+  });
+});
+
+describe("auditSecurity output schema", () => {
+  it("findings use the 'asi' key (not 'asixx') for OWASP codes", () => {
+    const skill = { name: "schema-test", path: "/tmp/sa-regression/bad", agent: "test", files: ["SKILL.md"] };
+    const result = auditSecurity(skill as any);
+    const pi = result.findings.find(f => f.id === "PI-001");
+    expect(pi).toBeDefined();
+    expect(pi!.asi).toBe("ASI01");                // correct key, correct value
+    expect((pi as any).asixx).toBeUndefined();    // old key gone
   });
 });

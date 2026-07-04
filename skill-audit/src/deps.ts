@@ -179,7 +179,7 @@ function scanWithTrivy(resolvedPath: string): Finding[] {
             findings.push({
               id: 'VULN-' + vuln.VulnerabilityID,
               category: 'SC',
-              asixx: 'ASI04',
+              asi: 'ASI04',
               severity,
               file: target.Target,
               message: '[Trivy] Dependency vulnerability in ' + vuln.PackageName + ': ' + vuln.Title,
@@ -194,7 +194,7 @@ function scanWithTrivy(resolvedPath: string): Finding[] {
     findings.push({
       id: 'SCAN-TRIVY-01',
       category: 'SC',
-      asixx: 'ASI04',
+      asi: 'ASI04',
       severity: 'low',
       file: resolvedPath,
       message: 'Trivy scan completed with issues: ' + (e.message || String(e).slice(0, 100)),
@@ -232,7 +232,7 @@ function scanWithOSV(resolvedPath: string): Finding[] {
                 findings.push({
                   id: 'VULN-' + vuln.id,
                   category: 'SC',
-                  asixx: 'ASI04',
+                  asi: 'ASI04',
                   severity: mapOSVSeverity(vuln.severity),
                   file: resolvedPath,
                   message: '[OSV] Vulnerability in ' + pkg.package.name + 
@@ -250,7 +250,7 @@ function scanWithOSV(resolvedPath: string): Finding[] {
     findings.push({
       id: 'SCAN-OSV-01',
       category: 'SC',
-      asixx: 'ASI04',
+      asi: 'ASI04',
       severity: 'low',
       file: resolvedPath,
       message: 'OSV scan completed with issues: ' + (e.message || String(e).slice(0, 100)),
@@ -297,7 +297,7 @@ function scanWithOSVLockfile(resolvedPath: string): Finding[] {
                   findings.push({
                     id: 'VULN-' + vuln.id,
                     category: 'SC',
-                    asixx: 'ASI04',
+                    asi: 'ASI04',
                     severity: mapOSVSeverity(vuln.severity),
                     file: lockfile,
                     message: '[OSV-LOCK] Vulnerability in ' + pkg.package.name + 
@@ -315,7 +315,7 @@ function scanWithOSVLockfile(resolvedPath: string): Finding[] {
       findings.push({
         id: 'SCAN-OSV-LOCK-01',
         category: 'SC',
-        asixx: 'ASI04',
+        asi: 'ASI04',
         severity: 'low',
         file: lockfile,
         message: 'OSV lockfile scan failed: ' + (e.message || String(e).slice(0, 100)),
@@ -378,7 +378,7 @@ function scanWithOSVAPI(resolvedPath: string): Finding[] {
               findings.push({
                 id: 'VULN-' + vuln.id,
                 category: 'SC',
-                asixx: 'ASI04',
+                asi: 'ASI04',
                 severity: mapOSVSeverity(vuln.severity?.[0]?.type),
                 file: resolvedPath,
                 message: '[OSV-API] Vulnerability in ' + (pkgInfo?.name || 'unknown') + 
@@ -395,7 +395,7 @@ function scanWithOSVAPI(resolvedPath: string): Finding[] {
       findings.push({
         id: 'SCAN-OSVAPI-01',
         category: 'SC',
-        asixx: 'ASI04',
+        asi: 'ASI04',
         severity: 'low',
         file: resolvedPath,
         message: 'OSV API query failed: ' + (e.message || String(e).slice(0, 100)),
@@ -654,7 +654,7 @@ export function scanDependencies(skillPath: string): Finding[] {
     findings.push({
       id: 'SCAN-01',
       category: 'SC',
-      asixx: 'ASI04',
+      asi: 'ASI04',
       severity: 'medium',
       file: skillPath,
       message: 'Could not resolve skill path - may be invalid symlink',
@@ -667,7 +667,7 @@ export function scanDependencies(skillPath: string): Finding[] {
     findings.push({
       id: 'SCAN-02',
       category: 'SC',
-      asixx: 'ASI04',
+      asi: 'ASI04',
       severity: 'medium',
       file: skillPath,
       message: 'Skill path does not exist',
