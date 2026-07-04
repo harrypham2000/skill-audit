@@ -535,7 +535,7 @@ export function complianceToFindings(
       findings.push({
         id: finding.requirement,
         category: 'COMP',
-        asixx: 'ASI04',
+        asi: 'ASI04',
         severity: finding.severity,
         file: skillPath,
         message: `[${report.framework}] ${finding.message}`,
