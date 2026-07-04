@@ -439,7 +439,7 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
       const content = readFileSync(file, "utf-8");
       fileContents.set(file, content);
 
-      if (filename === "SKILL.md" || filename === "SKILL.md") {
+      if (filename === "SKILL.md" || filename === "AGENTS.md") {
         // Use external patterns if available, otherwise use hardcoded
         if (hasExternalPatterns) {
           const piPatterns = patterns.get("promptInjection") || [];
