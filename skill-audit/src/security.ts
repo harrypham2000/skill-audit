@@ -218,7 +218,10 @@ function isKnownSafeScript(filePath: string, content: string): boolean {
   return isDocumentedSafeLifecycleScript(filePath, content);
 }
 
-function getCategoryFromId(id: string): string {
+export function getCategoryFromId(id: string): string {
+  if (id.startsWith("PROV")) return "PROV";
+  if (id.startsWith("PII")) return "PII";
+  if (id.startsWith("PEX")) return "PII";
   if (id.startsWith("PI")) return "PI";
   if (id.startsWith("CL")) return "SC";
   if (id.startsWith("EX")) return "TM";
@@ -226,13 +229,13 @@ function getCategoryFromId(id: string): string {
   if (id.startsWith("SC")) return "SC";
   if (id.startsWith("TM")) return "TM";
   if (id.startsWith("BM")) return "BM";
-  if (id.startsWith("PROV")) return "PROV";
-  if (id.startsWith("PII")) return "PII";  // NEW: PII category
-  if (id.startsWith("PEX")) return "PII";  // NEW: PII exfiltration
   return "SC";
 }
 
-function getASIXXFromId(id: string): string {
+export function getASIXXFromId(id: string): string {
+  if (id.startsWith("PROV")) return "ASI04";
+  if (id.startsWith("PII")) return "ASI03";
+  if (id.startsWith("PEX")) return "ASI02";
   if (id.startsWith("PI")) return "ASI01";
   if (id.startsWith("CL")) return "ASI04";
   if (id.startsWith("EX")) return "ASI02";
@@ -240,9 +243,6 @@ function getASIXXFromId(id: string): string {
   if (id.startsWith("SC")) return "ASI04";
   if (id.startsWith("TM")) return "ASI02";
   if (id.startsWith("BM")) return "ASI09";
-  if (id.startsWith("PROV")) return "ASI04";
-  if (id.startsWith("PII")) return "ASI03";  // NEW: Sensitive Data Exposure
-  if (id.startsWith("PEX")) return "ASI02";  // PII exfiltration = Tool Misuse
   return "ASI04";
 }
 
