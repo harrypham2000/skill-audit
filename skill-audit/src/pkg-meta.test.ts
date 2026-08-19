@@ -68,14 +68,15 @@ describe("gate 6: tarball-content verification", () => {
     expect(pkg.scripts.prepack).toBe("npm run verify:pack");
   });
 
-  it("the tarball verifier accepts the current package contents", () => {
+  it("the clean build-and-pack pipeline accepts the current package contents", () => {
     const { spawnSync } = require("child_process") as typeof import("child_process");
-    const result = spawnSync("node", ["scripts/verify-tarball.mjs"], {
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const result = spawnSync(npm, ["run", "verify:pack"], {
       cwd: new URL("..", import.meta.url).pathname,
       encoding: "utf-8",
       timeout: 120_000,
     });
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("tarball verified from bytes");
     expect(result.stdout).toContain("CLI smoke-run OK");
   });
