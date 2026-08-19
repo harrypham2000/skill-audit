@@ -19,6 +19,8 @@ AI Agent Skill Security Auditing Plan for the Vercel Skills Ecosystem.md
 PLAN.md
 RELEASE-STRATEGY.md
 skill-audit-review.md
+IMPROVEMENT_IMPLEMENTATION_PLAN.md
+MISSION_DRIFT_REVIEW.md
 
 # skill-audit package (npm)
 skill-audit/node_modules/
