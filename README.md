@@ -19,7 +19,7 @@ Before installing a third-party skill, you need to know:
 - Is the local agent shell/config environment already compromised?
 - Did agent hooks, PATH, shell startup files, or MCP/tool configs drift since the last trusted baseline?
 
-`skill-audit` answers these questions automatically.
+`skill-audit` helps answer these questions. Actual coverage depends on the selected mode, installed tools (trivy/osv-scanner/python3), network permission, language support, semantic provider availability, and inspection completeness — every report states what ran.
 
 ## Overview
 
@@ -31,10 +31,11 @@ Before installing a third-party skill, you need to know:
 - **Exfiltration** patterns (ASI02)
 - **Behavioral manipulation** (ASI09)
 - **PII exposure** (ASI03) — 39 patterns for Vietnam and International PII
-- **Compliance violations** — Vietnam AI Law 2026, EU AI Act, GDPR
 - **Dependency vulnerabilities** (CVE/GHSA/KEV/EPSS)
 - **Agent environment risks** — suspicious hooks, shell startup files, PATH hijacking, MCP/tool command configs, workspace instruction poisoning, and package lifecycle scripts
 - **Session context gaps** — executable skills that do not declare what agent/session facts they read, require, and write back
+
+> **Compliance (planned/unavailable):** Vietnam AI Law 2026, EU AI Act, and GDPR checklists exist as library code but are not yet wired into scans; the feature reports `unavailable` (see the package README's Feature Status table).
 
 ## Quick Start
 
@@ -48,14 +49,15 @@ npx @hungpg/skill-audit -g
 # Or use the installed CLI
 skill-audit -g
 
+# Canonical scan (default): snapshot → analyzers → capabilities → policy → report
+skill-audit --skill-path ./my-skill
+skill-audit                       # scans discovered global skills
+
 # Lint mode (spec validation only - fast)
 skill-audit --mode lint
 
-# Full audit with JSON output
-skill-audit --mode audit -j > audit-results.json
-
-# Fail CI/CD on dangerous skills
-skill-audit -g -t 3.0
+# Audit output as JSON
+skill-audit -j > audit-results.json
 
 # Scan the local agent execution environment before invoking skills
 skill-audit doctor
@@ -153,16 +155,17 @@ context:
 
 ## Sample Output
 
+Canonical scan mode (default) — one line per skill plus the aggregate policy decision:
+
 ```
-🔍 Auditing 3 skills...
+🔍 Auditing skills (full security + intelligence)...
 
-✅ safe-skill (0.5) - No issues
-⚠️  risky-skill (3.2) - 2 findings
-   - PI-001: Prompt injection pattern detected (SKILL.md:15)
-   - SC-003: Hardcoded API key pattern (src/index.ts:8)
-🔴 dangerous-skill (6.8) - 5 findings, exceeds threshold
+✅ safe-skill — complete, 0 finding(s), score 0
+⚠️ risky-skill — complete, 2 finding(s), score 1.5
+🔴 dangerous-skill — complete, 5 finding(s), score 8
 
-❌ 1 skill exceeds threshold 3.0
+Decision: reject (rule findings.critical, exit 1)
+   Critical finding SC-001: Hardcoded credential detected
 ```
 
 ## CI/CD Integration
@@ -176,7 +179,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npx @hungpg/skill-audit -g -t 3.0 --json > results.json
+      # Gates on the policy exit code (0 allowed / 1 rejected / 2 invalid or incomplete).
+      # -t is an advisory prioritization hint only and never affects the exit code.
+      - run: npx @hungpg/skill-audit -g --json > results.json
       - uses: actions/upload-artifact@v4
         with:
           name: audit-results
@@ -206,14 +211,16 @@ jobs:
 
 | Level | Score | Action |
 |-------|-------|--------|
-| ✅ Safe | 0-3.0 | No issues or minor concerns |
-| ⚠️ Risky | 3.1-5.0 | Review recommended |
-| 🔴 Dangerous | 5.1-7.0 | Fix before use |
-| ☠️ Malicious | 7.1+ | Do not use |
+| ✅ Safe | 0 | No issues |
+| ⚠️ Risky | 0.1-3.0 | Review recommended |
+| 🔴 Dangerous | 3.1-7.0 | Fix before use |
+| ☠️ Malicious | 7.1-10.0 | Do not use |
 
 ## Vulnerability Intelligence
 
-Enriched with real-time threat data from:
+> **Status: KEV/EPSS enrichment is active.** Local KEV/EPSS caches enrich dependency findings when present; GHSA/NVD feeds are not yet joined into findings.
+
+Advisory data sources:
 
 - **CISA KEV** — Known Exploited Vulnerabilities (daily updates)
 - **FIRST EPSS** — Exploit Prediction Scoring System (3-day updates)
@@ -223,11 +230,13 @@ Enriched with real-time threat data from:
 
 The vulnerability database updates automatically:
 
-1. **On install** - `postinstall` hook fetches latest KEV/EPSS feeds
-2. **Daily** - GitHub Actions workflow keeps cache fresh (public repos)
-3. **Manual** - Run `npx @hungpg/skill-audit --update-db` anytime
+1. **Manual (supported)** - Run `npx @hungpg/skill-audit --update-db` anytime
+2. **CI (repository-local)** - The GitHub Actions workflow refreshes the feed cache inside this repository's CI; it does not update data on user machines
+3. **On install** - The postinstall script is informational only (hook prompt); it performs no network update
 
-⚠️ **Stale cache warning**: If feeds are >3 days old, audit output will warn you to update.
+Local KEV/EPSS caches enrich dependency findings when present. Advisory sources: CISA KEV, FIRST EPSS, OSV.dev; GHSA/NVD feeds exist in the intelligence module but are not currently joined into findings.
+
+⚠️ **Stale cache warning**: In lint (terminal) output a warning appears when feeds are >3 days old; in scan mode staleness is reported as a diagnostic in the canonical report.
 
 ### Manual Cron Setup (Enterprise)
 
@@ -263,13 +272,13 @@ schtasks /create /tn "skill-audit-update" /tr "npx @hungpg/skill-audit --update-
 ## Related Projects
 
 ### Vercel Skills Ecosystem
-- **[Vercel Skills](https://skills.sh)** — Agent skills registry and runtime where `skill-audit` validates submissions
+- **[Vercel Skills](https://skills.sh)** — Agent skills registry and runtime; `skill-audit` is designed to validate submissions, but no automated integration is wired in this repository yet
 - **[Anthropic Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills)** — SKILL.md specification that `skill-audit` validates against
 
 ### Security & Validation
-- **[AgentVeil](https://github.com/vurakit/agentveil)** — Security proxy for AI agents with PII anonymization, prompt injection protection, and compliance checking. Inspired `skill-audit`'s PII detection patterns and compliance validation framework
+- **[AgentVeil](https://github.com/vurakit/agentveil)** — Security proxy for AI agents with PII anonymization, prompt injection protection, and compliance checking. Inspired `skill-audit`'s PII detection patterns and experimental compliance checklist
 - **[GoClaw](https://github.com/nextlevelbuilder/goclaw)** — Multi-agent gateway with 5-layer security (prompt injection detection, SSRF protection, shell deny patterns). Inspired `skill-audit`'s pattern-based vulnerability detection
-- **[Trivy](https://github.com/aquasecurity/trivy)** — Vulnerability scanner used by `skill-audit` for dependency CVE scanning
+- **[Trivy](https://github.com/aquasecurity/trivy)** — One of the local dependency scanners used by `skill-audit` (osv-scanner preferred, then trivy; the OSV API route requires `--network`)
 
 ### Standards
 - **[OWASP Agentic Top 10](https://owasp.org/www-project-agentic-ai-application-security-verification-standard/)** — ASI01-ASI10 threat categories that `skill-audit` maps findings to

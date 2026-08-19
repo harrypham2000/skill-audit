@@ -3,6 +3,7 @@ import { readdirSync, existsSync, realpathSync, readFileSync, writeFileSync, mkd
 import { resolve, relative, join } from 'path';
 import { resolveSkillPath } from './discover.js';
 import { Finding } from './types.js';
+import { AdvisoryRecord, getLocalAdvisories } from './intel.js';
 import { tmpdir } from 'os';
 
 interface TrivyResult {
@@ -144,6 +145,217 @@ function isScannerAvailable(scanner: string): boolean {
   }
 }
 
+// ============================================================
+// Phase 2: single authoritative route, diagnostics, enrichment
+// ============================================================
+
+export type DependencyRoute = "osv-scanner" | "trivy" | "osv-api" | "none";
+
+export interface DependencyDiagnostic {
+  source: string;
+  message: string;
+}
+
+export interface DependencyScanResult {
+  findings: Finding[];
+  diagnostics: DependencyDiagnostic[];
+  route: DependencyRoute;
+}
+
+export interface DependencyScanOptions {
+  /** Allow the OSV API network route. Local CLI scanners never need this. */
+  allowNetwork?: boolean;
+  /** Injectable for tests. */
+  scannerAvailable?: (name: string) => boolean;
+}
+
+interface ScannerRun {
+  findings: Finding[];
+  error?: string;
+}
+
+/** Pure route selection: osv-scanner CLI > trivy CLI > OSV API (network-only). */
+export function selectDependencyRoute(
+  available: (name: string) => boolean,
+  allowNetwork: boolean
+): { route: DependencyRoute; diagnostic?: DependencyDiagnostic } {
+  if (available("osv-scanner")) return { route: "osv-scanner" };
+  if (available("trivy")) {
+    return {
+      route: "trivy",
+      diagnostic: { source: "dependencies", message: "osv-scanner not found; using trivy as the authoritative route" },
+    };
+  }
+  if (allowNetwork) {
+    return {
+      route: "osv-api",
+      diagnostic: { source: "dependencies", message: "no local scanner found; using OSV API (network enabled)" },
+    };
+  }
+  return {
+    route: "none",
+    diagnostic: { source: "dependencies", message: "no local vulnerability scanner available (install trivy or osv-scanner, or pass --network)" },
+  };
+}
+
+/**
+ * One authoritative vulnerability route per run, in fixed precedence:
+ * osv-scanner CLI > trivy CLI > OSV API (only with allowNetwork).
+ * Scanner problems are diagnostics, never findings, and never affect the score.
+ */
+export function scanDependenciesDetailed(
+  skillPath: string,
+  options: DependencyScanOptions = {}
+): DependencyScanResult {
+  const diagnostics: DependencyDiagnostic[] = [];
+  const available = options.scannerAvailable ?? isScannerAvailable;
+
+  let resolvedPath: string;
+  try {
+    resolvedPath = realpathSync(resolveSkillPath(skillPath));
+  } catch (e) {
+    diagnostics.push({ source: "dependencies", message: `Could not resolve skill path: ${String(e)}` });
+    return { findings: [], diagnostics, route: "none" };
+  }
+  if (!existsSync(resolvedPath)) {
+    diagnostics.push({ source: "dependencies", message: `Skill path does not exist: ${resolvedPath}` });
+    return { findings: [], diagnostics, route: "none" };
+  }
+
+  const { route, diagnostic } = selectDependencyRoute(available, options.allowNetwork === true);
+  if (diagnostic) diagnostics.push(diagnostic);
+  let run: ScannerRun = { findings: [] };
+  if (route === "osv-scanner") {
+    run = runOsvScanner(resolvedPath, available);
+  } else if (route === "trivy") {
+    run = scanWithTrivy(resolvedPath, available);
+  } else if (route === "osv-api") {
+    run = scanWithOSVAPI(resolvedPath);
+  }
+
+  if (run.error) {
+    diagnostics.push({ source: "dependencies", message: `${route} scan error: ${run.error}` });
+  }
+
+  const { findings: enriched, diagnostics: intelDiags } = enrichWithLocalIntel(run.findings);
+  diagnostics.push(...intelDiags);
+
+  return { findings: enriched, diagnostics, route };
+}
+
+/** Back-compat wrapper: findings only, no error-findings. */
+export function scanDependencies(skillPath: string): Finding[] {
+  return scanDependenciesDetailed(skillPath).findings;
+}
+
+function runOsvScanner(resolvedPath: string, available: AvailabilityCheck): ScannerRun {
+  const direct = scanWithOSV(resolvedPath, available);
+  const lockfile = scanWithOSVLockfile(resolvedPath, available);
+  const findings = [...direct.findings, ...lockfile.findings];
+  const seen = new Set<string>();
+  const deduped = findings.filter(f => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
+    return true;
+  });
+  const error = direct.error && lockfile.error
+    ? `${direct.error}; ${lockfile.error}`
+    : direct.error || lockfile.error;
+  return { findings: deduped, error };
+}
+
+/**
+ * Enrich VULN-* findings with the locally cached KEV/EPSS feeds.
+ * Cache reads are local only; missing or stale caches are diagnostics.
+ */
+function enrichWithLocalIntel(findings: Finding[]): { findings: Finding[]; diagnostics: DependencyDiagnostic[] } {
+  const diagnostics: DependencyDiagnostic[] = [];
+  const vulnFindings = findings.filter(f => f.id.startsWith("VULN-"));
+  if (vulnFindings.length === 0) return { findings, diagnostics };
+
+  let kevRecords: AdvisoryRecord[] = [];
+  let epssRecords: AdvisoryRecord[] = [];
+  try {
+    const kev = getLocalAdvisories("kev");
+    kevRecords = kev.records;
+    if (kev.stale && kev.records.length > 0) {
+      diagnostics.push({ source: "intel-kev", message: "KEV cache is stale; enrichment may be outdated" });
+    }
+  } catch (e) {
+    diagnostics.push({ source: "intel-kev", message: `KEV cache unavailable: ${String(e)}` });
+  }
+  try {
+    const epss = getLocalAdvisories("epss");
+    epssRecords = epss.records;
+    if (epss.stale && epss.records.length > 0) {
+      diagnostics.push({ source: "intel-epss", message: "EPSS cache is stale; enrichment may be outdated" });
+    }
+  } catch (e) {
+    diagnostics.push({ source: "intel-epss", message: `EPSS cache unavailable: ${String(e)}` });
+  }
+
+  if (kevRecords.length === 0 && epssRecords.length === 0) {
+    diagnostics.push({ source: "intel", message: "no local intel caches; run --update-db to enable enrichment" });
+    return { findings, diagnostics };
+  }
+
+  return { findings: enrichDependencyFindings(findings, kevRecords, epssRecords), diagnostics };
+}
+
+/**
+ * Pure enrichment: join KEV/EPSS intel into canonical VULN-* findings.
+ * KEV membership escalates severity to at least high and marks confidence high.
+ */
+export function enrichDependencyFindings(
+  findings: Finding[],
+  kevRecords: AdvisoryRecord[],
+  epssRecords: AdvisoryRecord[]
+): Finding[] {
+  const kevByAdvisory = new Map<string, AdvisoryRecord>();
+  for (const r of kevRecords) {
+    kevByAdvisory.set(r.id, r);
+    for (const alias of r.aliases ?? []) kevByAdvisory.set(alias, r);
+  }
+  const epssByAdvisory = new Map<string, AdvisoryRecord>();
+  for (const r of epssRecords) {
+    epssByAdvisory.set(r.id, r);
+    for (const alias of r.aliases ?? []) epssByAdvisory.set(alias, r);
+  }
+
+  return findings.map(f => {
+    if (!f.id.startsWith("VULN-")) return f;
+    const advisory = f.id.slice("VULN-".length);
+    const kev = kevByAdvisory.get(advisory);
+    const epss = epssByAdvisory.get(advisory);
+    if (!kev && !epss) return f;
+
+    const markers: string[] = [];
+    let severity = f.severity;
+    let confidence = f.confidence;
+    let cwe = f.cwe;
+
+    if (kev) {
+      markers.push("KEV known-exploited");
+      if (severity !== "critical") severity = "high";
+      confidence = "high";
+      const kevCwe = (kev.cwe ?? []).join(", ");
+      if (kevCwe) cwe = cwe ? `${cwe}, ${kevCwe}` : kevCwe;
+    }
+    if (epss?.epss !== undefined) {
+      markers.push(`EPSS ${epss.epss.toFixed(2)}`);
+      if (confidence === undefined && epss.epss >= 0.5) confidence = "medium";
+    }
+
+    return {
+      ...f,
+      severity: severity as Finding["severity"],
+      confidence,
+      cwe,
+      message: `${f.message} [${markers.join("; ")}]`,
+    };
+  });
+}
+
 // Map OSV severity to our severity levels
 function mapOSVSeverity(severity?: string): 'critical' | 'high' | 'medium' | 'low' {
   const s = severity?.toUpperCase() || '';
@@ -153,11 +365,13 @@ function mapOSVSeverity(severity?: string): 'critical' | 'high' | 'medium' | 'lo
 }
 
 // Scan with Trivy
-function scanWithTrivy(resolvedPath: string): Finding[] {
+type AvailabilityCheck = (name: string) => boolean;
+
+function scanWithTrivy(resolvedPath: string, available: AvailabilityCheck = isScannerAvailable): ScannerRun {
   const findings: Finding[] = [];
-  
-  if (!isScannerAvailable('trivy')) {
-    return findings;
+
+  if (!available('trivy')) {
+    return { findings };
   }
 
   try {
@@ -190,27 +404,18 @@ function scanWithTrivy(resolvedPath: string): Finding[] {
       }
     }
   } catch (e: any) {
-    // Convert scanner failure to explicit finding for observability
-    findings.push({
-      id: 'SCAN-TRIVY-01',
-      category: 'SC',
-      asi: 'ASI04',
-      severity: 'low',
-      file: resolvedPath,
-      message: 'Trivy scan completed with issues: ' + (e.message || String(e).slice(0, 100)),
-      evidence: e.stack || String(e)
-    });
+    return { findings, error: e.message || String(e).slice(0, 200) };
   }
 
-  return findings;
+  return { findings };
 }
 
 // Scan with OSV Scanner (Google's OSV.dev)
-function scanWithOSV(resolvedPath: string): Finding[] {
+function scanWithOSV(resolvedPath: string, available: AvailabilityCheck = isScannerAvailable): ScannerRun {
   const findings: Finding[] = [];
-  
-  if (!isScannerAvailable('osv-scanner')) {
-    return findings;
+
+  if (!available('osv-scanner')) {
+    return { findings };
   }
 
   try {
@@ -247,26 +452,18 @@ function scanWithOSV(resolvedPath: string): Finding[] {
       }
     }
   } catch (e: any) {
-    findings.push({
-      id: 'SCAN-OSV-01',
-      category: 'SC',
-      asi: 'ASI04',
-      severity: 'low',
-      file: resolvedPath,
-      message: 'OSV scan completed with issues: ' + (e.message || String(e).slice(0, 100)),
-      evidence: e.stack || String(e)
-    });
+    return { findings, error: e.message || String(e).slice(0, 200) };
   }
 
-  return findings;
+  return { findings };
 }
 
 // Scan with OSV using lockfile input (more precise)
-function scanWithOSVLockfile(resolvedPath: string): Finding[] {
+function scanWithOSVLockfile(resolvedPath: string, available: AvailabilityCheck = isScannerAvailable): ScannerRun {
   const findings: Finding[] = [];
-  
-  if (!isScannerAvailable('osv-scanner')) {
-    return findings;
+
+  if (!available('osv-scanner')) {
+    return { findings };
   }
 
   const lockfiles = [
@@ -312,30 +509,23 @@ function scanWithOSVLockfile(resolvedPath: string): Finding[] {
         }
       }
     } catch (e: any) {
-      findings.push({
-        id: 'SCAN-OSV-LOCK-01',
-        category: 'SC',
-        asi: 'ASI04',
-        severity: 'low',
-        file: lockfile,
-        message: 'OSV lockfile scan failed: ' + (e.message || String(e).slice(0, 100)),
-        evidence: e.stack || String(e)
-      });
+      const error = e.message || String(e).slice(0, 200);
+      return { findings, error: `lockfile ${lockfile}: ${error}` };
     }
   }
 
-  return findings;
+  return { findings };
 }
 
 // Query OSV.dev API directly for vulnerabilities (no CLI needed)
-function scanWithOSVAPI(resolvedPath: string): Finding[] {
+function scanWithOSVAPI(resolvedPath: string): ScannerRun {
   const findings: Finding[] = [];
 
   // Parse lockfiles to get packages
   const packages = extractPackagesFromLockfiles(resolvedPath);
-  
+
   if (packages.length === 0) {
-    return findings;
+    return { findings };
   }
 
   // Query OSV API in batches (max 1000 per request)
@@ -391,20 +581,12 @@ function scanWithOSVAPI(resolvedPath: string): Finding[] {
         }
       }
     } catch (e: any) {
-      // OSV API failure is OK - it's a fallback, but log for observability
-      findings.push({
-        id: 'SCAN-OSVAPI-01',
-        category: 'SC',
-        asi: 'ASI04',
-        severity: 'low',
-        file: resolvedPath,
-        message: 'OSV API query failed: ' + (e.message || String(e).slice(0, 100)),
-        evidence: e.stack || String(e)
-      });
+      // OSV API failure is a degraded route, not a vulnerability.
+      return { findings, error: `OSV API query failed: ${e.message || String(e).slice(0, 200)}` };
     }
   }
 
-  return findings;
+  return { findings };
 }
 
 // Extract packages from lockfiles for OSV API query
@@ -641,76 +823,6 @@ function parseTextLockfile(content: string, ecosystem: string, packages: Array<{
     }
     return;
   }
-}
-
-export function scanDependencies(skillPath: string): Finding[] {
-  const findings: Finding[] = [];
-  let resolvedPath: string;
-
-  try {
-    resolvedPath = resolveSkillPath(skillPath);
-    resolvedPath = realpathSync(resolvedPath);
-  } catch (e) {
-    findings.push({
-      id: 'SCAN-01',
-      category: 'SC',
-      asi: 'ASI04',
-      severity: 'medium',
-      file: skillPath,
-      message: 'Could not resolve skill path - may be invalid symlink',
-      evidence: String(e)
-    });
-    return findings;
-  }
-
-  if (!existsSync(resolvedPath)) {
-    findings.push({
-      id: 'SCAN-02',
-      category: 'SC',
-      asi: 'ASI04',
-      severity: 'medium',
-      file: skillPath,
-      message: 'Skill path does not exist',
-      evidence: resolvedPath
-    });
-    return findings;
-  }
-
-  // Run all available scanners and aggregate results
-  const trivyFindings = scanWithTrivy(resolvedPath);
-  const osvFindings = scanWithOSV(resolvedPath);
-  const osvLockFindings = scanWithOSVLockfile(resolvedPath);
-  const osvAPIFindings = scanWithOSVAPI(resolvedPath);
-
-  // Deduplicate by vulnerability ID (prefer OSV results as they're more current)
-  const seen = new Set<string>();
-  const deduped: Finding[] = [];
-
-  // Add OSV API findings first (direct API = most current database)
-  for (const f of osvAPIFindings) {
-    if (!seen.has(f.id)) {
-      seen.add(f.id);
-      deduped.push(f);
-    }
-  }
-
-  // Add OSV CLI findings (if CLI available)
-  for (const f of [...osvLockFindings, ...osvFindings]) {
-    if (!seen.has(f.id)) {
-      seen.add(f.id);
-      deduped.push(f);
-    }
-  }
-
-  // Add Trivy findings if not already found
-  for (const f of trivyFindings) {
-    if (!seen.has(f.id)) {
-      seen.add(f.id);
-      deduped.push(f);
-    }
-  }
-
-  return deduped;
 }
 
 export function getDependencySummary(skillPath: string): {

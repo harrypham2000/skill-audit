@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { basename, extname } from "path";
 import { SkillInfo, SkillManifest, Finding } from "./types.js";
 import { resolveSkillPath, getSkillFiles } from "./discover.js";
+import { parseContextContract, hasBroadReads } from "./context.js";
 import { isDocumentedSafeLifecycleScript } from "./lifecycle-safety.js";
 import { loadAndCompile, hasPatternsFile, getPatternMetadata, CompiledPattern } from "./patterns.js";
 
@@ -261,7 +262,19 @@ interface CompiledPatternDef {
   category: string;
 }
 
-function scanContent(content: string, file: string, patterns: PatternDef[] | CompiledPatternDef[]): Finding[] {
+/**
+ * Scan content line by line with regex patterns. Findings carry a line-only
+ * SourceLocation: regex matching has no column knowledge, so the location
+ * honestly spans the whole matched line (startColumn 1, exclusive endColumn
+ * line length + 1). `lineOffset` shifts line numbers into the containing
+ * file (used for fenced code blocks inside markdown files).
+ */
+function scanContent(
+  content: string,
+  file: string,
+  patterns: PatternDef[] | CompiledPatternDef[],
+  lineOffset = 0
+): Finding[] {
   const findings: Finding[] = [];
   const lines = content.split("\n");
 
@@ -275,15 +288,24 @@ function scanContent(content: string, file: string, patterns: PatternDef[] | Com
 
     for (let i = 0; i < lines.length; i++) {
       if (regex.test(lines[i])) {
+        const startLine = lineOffset + i + 1;
         findings.push({
           id,
           category: category as any,
           asi,
           severity: severity as any,
           file,
-          line: i + 1,
+          line: startLine,
           message,
-          evidence: lines[i].substring(0, 100)
+          evidence: lines[i].substring(0, 100),
+          location: {
+            file,
+            startLine,
+            startColumn: 1,
+            endLine: startLine,
+            endColumn: lines[i].length + 1,
+            precision: "line-only",
+          },
         });
       }
     }
@@ -305,6 +327,14 @@ function mapCategoryToAsi(category: string): string {
   return map[category] || "ASI04";
 }
 
+/**
+ * Scan fenced code blocks inside a markdown file. Findings map back to the
+ * ORIGINAL markdown file: `file` is the markdown path and line/column point
+ * into the markdown itself (the block's lines are verbatim markdown lines,
+ * so a line offset is the only mapping needed). The legacy " (code block)"
+ * file-name suffix is no longer emitted; lifecycle-safety's normalizeFilePath
+ * keeps stripping it for any pre-existing entries.
+ */
 function scanCodeBlocksInMarkdown(content: string, file: string): Finding[] {
   const findings: Finding[] = [];
   const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
@@ -312,10 +342,12 @@ function scanCodeBlocksInMarkdown(content: string, file: string): Finding[] {
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const code = match[2];
-    findings.push(...scanContent(code, file + " (code block)", CREDENTIAL_PATTERNS_CODE));
-    findings.push(...scanContent(code, file + " (code block)", EXFILTRATION_PATTERNS));
-    findings.push(...scanContent(code, file + " (code block)", DANGEROUS_PATTERNS));
-    findings.push(...scanContent(code, file + " (code block)", SECRET_PATTERNS));
+    // Line of the opening fence; block content starts on the next line.
+    const fenceLine = content.slice(0, match.index).split("\n").length;
+    findings.push(...scanContent(code, file, CREDENTIAL_PATTERNS_CODE, fenceLine));
+    findings.push(...scanContent(code, file, EXFILTRATION_PATTERNS, fenceLine));
+    findings.push(...scanContent(code, file, DANGEROUS_PATTERNS, fenceLine));
+    findings.push(...scanContent(code, file, SECRET_PATTERNS, fenceLine));
   }
 
   return findings;
@@ -545,8 +577,23 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
   if (!skillCanExecute(manifest, files)) return [];
 
   const skillFile = `${resolvedPath}/SKILL.md`;
-  const context = manifest.context;
-  if (!context || typeof context !== "object" || Array.isArray(context)) {
+  const parsed = parseContextContract(manifest.context);
+  const contract = parsed.contract;
+
+  if (parsed.errors.length > 0) {
+    return [{
+      id: "CTX-007",
+      category: "ENV",
+      asi: "ASI05",
+      severity: "high",
+      file: skillFile,
+      message: "Context contract fails schema validation",
+      evidence: parsed.errors.join("; "),
+      recommendation: "Fix the context frontmatter: version 1, string arrays for reads/requires/writes, confirmation one of never/on-risk/always."
+    }];
+  }
+
+  if (!contract || Object.keys(contract).every(k => (contract as Record<string, unknown>)[k] === undefined)) {
     return [{
       id: "CTX-001",
       category: "ENV",
@@ -558,9 +605,8 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     }];
   }
 
-  const contract = context as Record<string, unknown>;
   const findings: Finding[] = [];
-  if (!Array.isArray(contract.reads)) {
+  if (!contract.reads) {
     findings.push({
       id: "CTX-002",
       category: "ENV",
@@ -571,7 +617,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
       recommendation: "Declare context.reads with narrow fields such as user_goal, target_environment, or changed_files."
     });
   }
-  if (!Array.isArray(contract.requires)) {
+  if (!contract.requires) {
     findings.push({
       id: "CTX-003",
       category: "ENV",
@@ -582,7 +628,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
       recommendation: "Declare context.requires for required user intent, approvals, clean worktree, or verification status."
     });
   }
-  if (!Array.isArray(contract.writes)) {
+  if (!contract.writes) {
     findings.push({
       id: "CTX-004",
       category: "ENV",
@@ -605,8 +651,7 @@ function validateContextContract(manifest: SkillManifest, files: string[], resol
     });
   }
 
-  const reads = Array.isArray(contract.reads) ? contract.reads.map(String) : [];
-  if (reads.some(read => /full[_ -]?conversation|all[_ -]?context|all[_ -]?files/i.test(read))) {
+  if (contract && hasBroadReads(contract)) {
     findings.push({
       id: "CTX-006",
       category: "ENV",

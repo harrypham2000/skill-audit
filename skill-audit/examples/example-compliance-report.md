@@ -1,5 +1,7 @@
 # Compliance Validation Report
 
+> **Feature status: unavailable.** This report is illustrative only. The Vietnam AI Law / EU AI Act / GDPR checklists exist as library code and are not currently wired into scans — `skill-audit` does not produce compliance findings or scores today (runs report `complianceStatus: "not_run"`).
+
 **Generated:** 2026-03-23
 **Framework:** Vietnam AI Law 2026, EU AI Act, GDPR
 

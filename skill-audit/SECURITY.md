@@ -52,8 +52,8 @@ If skill-audit reports a false positive finding for this package's postinstall s
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.7.x   | ✅ Supported       |
-| < 0.7   | ❌ Unsupported     |
+| 0.9.x   | ✅ Supported       |
+| < 0.9   | ❌ Unsupported     |
 
 ## Vulnerability Disclosure
 

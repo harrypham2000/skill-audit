@@ -42,7 +42,7 @@ When using skill-audit to audit other skills:
 
 - This package includes a postinstall script for UX
 - The postinstall is informational only - does NOT auto-install hooks
-- Scanner excludes known-safe scripts (postinstall, preinstall, prepare)
+- Scanner excludes only documented-safe lifecycle scripts (scripts/*.cjs with verified safe content); other lifecycle scripts are still analyzed
 - See `SECURITY.md` for full security policy
 
 ## Reference

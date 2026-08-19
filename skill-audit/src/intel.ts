@@ -254,6 +254,14 @@ export function isCacheStale(source: string): { stale: boolean; age?: number; wa
 }
 
 /**
+ * Synchronous local-cache read for enrichment during scans.
+ * Never performs network I/O; a missing cache returns empty records.
+ */
+export function getLocalAdvisories(source: string): { records: AdvisoryRecord[]; stale: boolean } {
+  return { records: loadFromCache(source), stale: isCacheStale(source).stale };
+}
+
+/**
  * Save advisory records to cache
  */
 export function saveToCache(source: string, records: AdvisoryRecord[]): void {

@@ -1,9 +1,16 @@
 name: Beta Release
 
+# Beta releases follow the same traceable policy as stable ones:
+# commit the bump FIRST on the dispatched branch, verify the committed tree,
+# publish, then tag the exact commit that carries the version. Nothing
+# publishes uncommitted state and no tag points at a commit that lacks the
+# published version.
 on:
-  push:
-    branches:
-      - develop
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Base version for the beta, without leading v (defaults to package.json)'
+        required: false
 
 permissions:
   contents: write
@@ -17,13 +24,13 @@ env:
 jobs:
   beta-release:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'skip release')"
 
     steps:
-      - name: Checkout
+      - name: Checkout (dispatched branch)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          fetch-tags: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
@@ -32,87 +39,90 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        working-directory: ./skill-audit
-        run: npm ci
-
-      - name: Run tests
-        working-directory: ./skill-audit
-        run: npm test
-
-      - name: Build
-        working-directory: ./skill-audit
-        run: npm run build
-
       - name: Determine beta version
         id: version
         working-directory: ./skill-audit
         run: |
-          # Get current version
           CURRENT=$(node -p "require('./package.json').version")
-          echo "Current version: $CURRENT"
-
-          # Check if already a beta version
-          if [[ "$CURRENT" == *"-beta"* ]]; then
-            # Increment beta number
-            BETA_NUM=$(echo "$CURRENT" | sed 's/.*-beta\.//')
-            NEW_BETA=$((BETA_NUM + 1))
-            BASE_VERSION=$(echo "$CURRENT" | sed 's/-beta\..*//')
-            NEW_VERSION="${BASE_VERSION}-beta.${NEW_BETA}"
+          BASE="${{ inputs.version }}"
+          if [ -z "$BASE" ]; then
+            if [[ "$CURRENT" == *"-beta."* ]]; then
+              BASE=$(echo "$CURRENT" | sed 's/-beta\..*//')
+              NEXT=$(( $(echo "$CURRENT" | sed 's/.*-beta\.//') + 1 ))
+            else
+              BASE="$CURRENT"
+              NEXT=1
+            fi
           else
-            # Create new beta version (bump minor)
-            npm version --no-git-tag-version minor --silent > /dev/null
-            BASE_VERSION=$(node -p "require('./package.json').version")
-            NEW_VERSION="${BASE_VERSION}-beta.1"
+            # Count existing beta tags for the given base to pick the next number.
+            NEXT=$(( $(git tag -l "v${BASE}-beta.*" | sed 's/.*-beta\.//' | sort -n | tail -1 || echo 0) + 1 ))
           fi
-
-          echo "New beta version: $NEW_VERSION"
-
-          # Update package.json
-          npm version --no-git-tag-version --allow-same-version "$NEW_VERSION" --silent
-
+          NEW_VERSION="${BASE}-beta.${NEXT}"
+          echo "Current: $CURRENT -> Beta: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Configure npm
-        run: |
-          npm config set //registry.npmjs.org/:_authToken $NPM_TOKEN
-          npm whoami
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish to npm (beta tag)
+      - name: Commit the version bump FIRST (traceability)
+        id: bump
         working-directory: ./skill-audit
         run: |
-          npm config set //registry.npmjs.org/:_authToken $NPM_TOKEN
-          npm config set otp false
-          npm publish --tag beta --access public --provenance
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create GitHub Pre-release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: v${{ steps.version.outputs.version }}
-          name: Beta Release v${{ steps.version.outputs.version }}
-          body: |
-            ## Beta Release
-            
-            This is a pre-release for testing purposes. Not recommended for production use.
-            
-            ### Install
-            ```bash
-            npm install @hungpg/skill-audit@beta
-            ```
-          draft: false
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit version bump
-        working-directory: ./skill-audit
-        run: |
+          npm version --no-git-tag-version "${{ steps.version.outputs.version }}" --silent
+          npm install --package-lock-only --ignore-scripts --silent
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json
           git commit -m "chore: bump to v${{ steps.version.outputs.version }} [skip release]"
-          git push origin develop
+          # Push back to the branch this workflow was dispatched from, so the
+          # published version exists remotely before anything is published.
+          # A rejected push fails the run BEFORE publishing (fail closed).
+          git push origin "${GITHUB_REF_NAME}"
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        working-directory: ./skill-audit
+        run: npm ci
+
+      - name: Tests
+        working-directory: ./skill-audit
+        run: npm test
+
+      - name: Verify packed tarball (bytes)
+        working-directory: ./skill-audit
+        run: npm run verify:pack
+
+      - name: Derive release notes from commits
+        working-directory: ./skill-audit
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          RANGE="$LAST_TAG..HEAD"
+          if [ -z "$LAST_TAG" ]; then RANGE="HEAD"; fi
+          {
+            echo "## Beta ${{ steps.version.outputs.version }}"
+            echo ""
+            git log --no-merges --pretty=format:"- %s (%h)" "$RANGE"
+            echo ""
+            echo ""
+            echo "Pre-release for testing; not recommended for production."
+            echo ""
+            echo "### Install"
+            echo '```bash'
+            echo "npm install @hungpg/skill-audit@beta"
+            echo '```'
+          } > release-notes.md
+
+      - name: Publish the committed, verified beta
+        working-directory: ./skill-audit
+        run: npm publish --tag beta --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Tag the exact published commit
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.version.outputs.version }}
+          commit: ${{ steps.bump.outputs.sha }}
+          name: Beta Release v${{ steps.version.outputs.version }}
+          bodyFile: skill-audit/release-notes.md
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

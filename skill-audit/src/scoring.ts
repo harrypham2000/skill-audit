@@ -123,6 +123,11 @@ export function createAuditResult(
   };
 }
 
+export interface GroupedAuditMeta {
+  /** True only when framework compliance checks actually executed for this skill. */
+  complianceChecksRan?: boolean;
+}
+
 /**
  * Create grouped audit result for layered output
  * Spec findings drive the decision to block, security/intel are warnings
@@ -134,7 +139,8 @@ export function createGroupedAuditResult(
   securityFindings: Finding[],
   piiFindings: Finding[],
   complianceFindings: Finding[],
-  intelFindings: Finding[]
+  intelFindings: Finding[],
+  meta: GroupedAuditMeta = {}
 ): GroupedAuditResult {
   // Spec findings get lower weight - they're blockers but not security-critical
   const specScore = calculateRiskScore(specFindings);
@@ -153,9 +159,13 @@ export function createGroupedAuditResult(
     riskLevelInfo.label === "Risky" ? "risky" :
     riskLevelInfo.label === "Dangerous" ? "dangerous" : "malicious";
 
-  // Calculate compliance score (percentage)
+  // Compliance score is only meaningful when framework checks actually ran.
+  // Absence of COMP-pattern findings is not evidence of compliance.
+  const complianceRan = meta.complianceChecksRan === true;
   const complianceTotal = complianceFindings.length;
-  const compliancePassed = complianceTotal === 0 ? 100 : Math.max(0, 100 - complianceTotal * 10);
+  const compliancePercent = complianceRan
+    ? (complianceTotal === 0 ? 100 : Math.max(0, 100 - complianceTotal * 10))
+    : undefined;
 
   return {
     skill,
@@ -167,8 +177,11 @@ export function createGroupedAuditResult(
     intelFindings,
     riskScore: Math.round(finalScore * 10) / 10,
     riskLevel,
-    complianceScore: compliancePassed,
-    complianceRiskLevel: compliancePassed >= 80 ? 'minimal' : compliancePassed >= 60 ? 'limited' : compliancePassed >= 40 ? 'high' : 'unacceptable'
+    complianceScore: compliancePercent,
+    complianceRiskLevel: compliancePercent === undefined
+      ? undefined
+      : compliancePercent >= 80 ? 'minimal' : compliancePercent >= 60 ? 'limited' : compliancePercent >= 40 ? 'high' : 'unacceptable',
+    complianceStatus: complianceRan ? "experimental" : "not_run"
   };
 }
 

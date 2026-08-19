@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, statSync, lstatSync, realpathSync, readFileSync } from "fs";
+import { isContained } from "./paths.js";
 import { join, resolve, basename, extname } from "path";
 import { execFileSync } from "child_process";
 import { SkillInfo } from "./types.js";
@@ -175,7 +176,7 @@ export function getSkillFiles(skillPath: string, basePath?: string): string[] {
           try {
             const realPath = realpathSync(fullPath);
             // Verify the resolved path is still within the skill directory
-            if (!realPath.startsWith(root)) {
+            if (!isContained(root, realPath)) {
               // Symlink points outside - skip to prevent directory traversal
               continue;
             }

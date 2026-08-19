@@ -48,7 +48,10 @@ export function generateHookConfig(config: HookConfig = getDefaultHookConfig()):
           hooks: [
             {
               type: "command",
-              command: `skill-audit --mode audit --threshold ${config.threshold}${config.blockOnFailure ? " --block" : ""}`
+              // Canonical scan (default mode): its 0/1/2 policy exit contract
+              // is the gate. The removed --mode audit and the advisory
+              // --threshold must never appear in generated hooks.
+              command: "skill-audit"
             }
           ]
         }
@@ -189,7 +192,8 @@ export function installHook(config: HookConfig = getDefaultHookConfig()): { succ
     hooks: [
       {
         type: "command",
-        command: `skill-audit --mode audit --threshold ${config.threshold}${config.blockOnFailure ? " --block" : ""}`
+        // Canonical scan (default mode): the 0/1/2 policy exit contract gates.
+        command: "skill-audit"
       }
     ]
   };

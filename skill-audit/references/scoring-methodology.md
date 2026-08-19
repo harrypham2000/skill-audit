@@ -17,122 +17,96 @@ skill-audit uses a weighted scoring system that aggregates findings across multi
 
 ## Scoring Algorithm
 
-### Base Score Calculation
+Scoring differs by mode. In both modes the total is capped at 10.0, rounded to one decimal, and computed from active findings only (findings suppressed by a governed baseline never contribute).
+
+### Scan mode (default, canonical)
+
+The canonical scan kernel scores severity only — categories and ASI mappings never change the score:
 
 ```
-Total Score = Σ(Category Scores)
-Category Score = Σ(Finding Score × Finding Weight)
+Total Score = min(10, Σ(severity weight of each active finding))
 ```
 
-### Finding Weights by Category
+| Severity | Weight |
+|----------|--------|
+| critical | 5.0 |
+| high | 3.0 |
+| medium | 1.5 |
+| low | 0.5 |
+| info | 0.1 |
 
-| Category | Base Weight | Description |
-|----------|-------------|-------------|
-| **Specification** | 1.0 | SKILL.md format, frontmatter, structure |
-| **Prompt Injection (ASI01)** | 2.5 | Patterns that could override system instructions |
-| **Secrets/Leaks (ASI04)** | 2.0 | Hardcoded API keys, tokens, credentials |
-| **Code Execution (ASI05)** | 2.5 | Dynamic code execution without sandboxing |
-| **Exfiltration (ASI02)** | 2.0 | Data leakage to untrusted endpoints |
-| **Behavioral Manipulation (ASI09)** | 1.5 | Attempts to manipulate agent behavior |
-| **PII Detection (ASI03)** | 1.5 | Personally Identifiable Information exposure |
-| **PII Exfiltration (PEX)** | 2.0 | PII being sent to external endpoints |
-| **Compliance** | 1.5 | Regulatory framework violations |
-| **Dependency Vulnerabilities** | 1.0 | CVEs in skill dependencies |
+Unknown severities default to 1.
 
-### Severity Multipliers
+### Lint/grouped mode
 
-Each finding also has a severity multiplier:
-
-| Severity | Multiplier | Example |
-|----------|------------|---------|
-| info | 0.1 | Minor spec issues |
-| low | 0.3 | Non-critical findings |
-| medium | 0.6 | Moderate risk |
-| high | 1.0 | Significant risk |
-| critical | 2.0 | Active exploitation possible |
-
-## Finding Score Formula
+The grouped reporter scores each finding as severity weight × category-code weight, sums the five finding layers (spec, security, PII, compliance, intel), and blends them with fixed layer weights:
 
 ```
-Finding Score = Base Weight × Severity Multiplier × Count
+Layer Score   = min(10, Σ(severity weight × category weight))
+Total Score   = min(10, spec × 0.2 + security × 0.35 + pii × 0.25 + compliance × 0.1 + intel × 0.1)
 ```
 
-### Example Calculations
+| Category code | Weight | Description |
+|---------------|--------|-------------|
+| **SC** | 2.0 | Secrets/credentials |
+| **CE** | 1.5 | Code execution |
+| **PI** | 1.2 | Prompt injection |
+| **BM** | 1.0 | Behavioral manipulation |
+| **TM** | 1.0 | Tool misuse |
+| **PII** | 2.5 | PII detection |
+| **COMP** | 1.0 | Compliance |
+| **SPEC** | 0.5 | Specification |
+| **PROV** | 0.8 | Provenance |
+| **INTEL** | 1.0 | Intelligence findings |
 
-#### Example 1: Single Hardcoded API Key
+Unknown category codes default to a weight of 1.0.
+
+### Example Calculations (scan mode)
+
+#### Example 1: Single Critical Finding
 
 ```
-Finding: ASI04-01 (Hardcoded API Key)
-Base Weight: 2.0
-Severity: high (1.0)
-Count: 1
+Finding: SC-001 (severity: critical)
 
-Score = 2.0 × 1.0 × 1 = 2.0 (Risky)
+Score = 5.0 (Dangerous)
 ```
 
-#### Example 2: Multiple Prompt Injection Patterns
+#### Example 2: Multiple High-Severity Findings
 
 ```
-Finding: ASI01 (Prompt Injection)
-Base Weight: 2.5
-Severity: high (1.0)
-Count: 3
+Findings: 3 × high
 
-Score = 2.5 × 1.0 × 3 = 7.5 (Malicious)
+Score = 3.0 + 3.0 + 3.0 = 9.0 (Malicious)
 ```
 
 #### Example 3: Mixed Findings
 
 ```
-Findings:
-- SPEC-01 (missing SKILL.md): 1.0 × 0.6 × 1 = 0.6
-- ASI04-01 (API key): 2.0 × 1.0 × 1 = 2.0
-- ASI01-02 (prompt injection): 2.5 × 1.0 × 1 = 2.5
+Findings: 1 × critical, 1 × medium, 2 × low
 
-Total: 0.6 + 2.0 + 2.5 = 5.1 (Dangerous)
+Score = 5.0 + 1.5 + 0.5 + 0.5 = 7.5 (Malicious)
 ```
 
 ## Threshold Configuration
 
-### Default Thresholds
-
-| Threshold | Value | Use Case |
-|-----------|-------|----------|
-| `--threshold` | 3.0 | Default blocking threshold |
-| Warning | 1.0 | Show warning but don't block |
-
-### Custom Thresholds
+There is no default threshold. `--threshold` is advisory and never blocks: the exit code is decided by the policy (critical findings, preflight gates, inspection completeness), never by the score.
 
 ```bash
-# Block only dangerous skills
+# Prioritize review of skills scoring above 3.0 (advisory)
 npx skill-audit -t 3.0
 
-# Block risky skills too
+# Surface even minor scores in the review list
 npx skill-audit -t 1.0
 
-# Report only, no blocking
+# Effectively disable score-based prioritization
 npx skill-audit -t 10.0
 ```
 
 ## Score Aggregation Rules
 
-### Category Aggregation
-
-1. **Sum all findings** within each category
-2. **Cap category score** at 3.0 per category to prevent single categories from dominating
-3. **Sum category caps** to get total score
-4. **Apply ceiling** at 10.0
-
-### Cap Example
-
-```
-Category Scores Before Cap:
-- Security: 8.0 (capped to 3.0)
-- PII: 2.5
-- Compliance: 1.5
-
-Total: 3.0 + 2.5 + 1.5 = 7.0
-```
+1. **Exclude suppressed findings** — findings matched by a governed suppression baseline never contribute to the score
+2. **Sum all active findings** — severity-only in scan mode; severity × category-code weight (then layer blend) in lint/grouped mode
+3. **Apply the ceiling at 10.0** — there are no per-category caps; two critical findings already exceed the ceiling in scan mode
 
 ## Decision Matrix
 
@@ -157,52 +131,108 @@ The following are tracked but don't affect the numeric score:
 
 ### JSON Output
 
+Scan mode (`-j`) emits `{features, decision, reports}`; saving to a file with `-o` adds `generated`, `mode`, and `schemaVersion` envelope fields. Each entry in `reports` is a canonical scan report (schema `1`):
+
 ```json
 {
-  "riskScore": 5.2,
-  "riskLevel": "dangerous",
-  "findings": [
-    {
-      "id": "ASI04-01",
-      "category": "Secrets",
-      "score": 2.0,
-      "message": "Hardcoded API key detected"
-    }
+  "features": [
+    { "feature": "canonical-scan-kernel", "state": "stable", "detail": "Versioned report, inspection ledger, policy decision, 0/1/2 exit contract (--mode scan)" }
   ],
-  "summary": {
-    "safe": 0,
-    "risky": 2,
-    "dangerous": 1,
-    "malicious": 0
-  }
+  "decision": {
+    "outcome": "reject",
+    "rule": "findings.critical",
+    "reason": "Critical finding SC-001: Hardcoded credential detected",
+    "exitCode": 1
+  },
+  "reports": [
+    {
+      "schemaVersion": "1",
+      "scanner": { "name": "skill-audit", "version": "0.9.0" },
+      "input": {
+        "skill": "writing-skills",
+        "path": "/home/user/.qwen/skills/writing-skills",
+        "fileCount": 12,
+        "totalBytes": 48213,
+        "snapshotDigest": "sha256-…"
+      },
+      "findings": [
+        {
+          "id": "SC-001",
+          "category": "SC",
+          "asi": "ASI04",
+          "severity": "critical",
+          "file": "scripts/deploy.sh",
+          "line": 12,
+          "message": "Hardcoded credential detected",
+          "fingerprint": "…"
+        }
+      ],
+      "capabilities": [],
+      "analyzerRuns": [
+        { "analyzer": "security-patterns", "status": "ok", "findings": 1, "durationMs": 14 }
+      ],
+      "diagnostics": [],
+      "exclusions": [],
+      "scanStatus": "complete",
+      "decision": {
+        "outcome": "reject",
+        "rule": "findings.critical",
+        "reason": "Critical finding SC-001: Hardcoded credential detected",
+        "exitCode": 1
+      },
+      "suppressedCount": 0,
+      "riskScore": 5
+    }
+  ]
 }
 ```
 
-### Threshold Exit Codes
+Lint mode (`--mode lint -j`) emits `{features, results, decision}` with one grouped result per skill:
+
+```json
+{
+  "features": [],
+  "results": [
+    {
+      "skill": { "name": "tdd-workflow", "path": "/home/user/.qwen/skills/tdd-workflow", "agents": ["Claude Code"] },
+      "manifest": { "name": "tdd-workflow" },
+      "specFindings": [
+        { "id": "SPEC-002", "category": "SPEC", "severity": "low", "message": "SKILL.md exceeds 500 lines (523 lines)" }
+      ],
+      "securityFindings": [],
+      "piiFindings": [],
+      "complianceFindings": [],
+      "intelFindings": [],
+      "riskScore": 0.1,
+      "riskLevel": "risky",
+      "complianceStatus": "not_run"
+    }
+  ],
+  "decision": { "outcome": "allow", "rule": "policy.default", "reason": "No blocking findings", "exitCode": 0 }
+}
+```
+
+### Exit Codes
 
 | Exit Code | Meaning |
 |-----------|---------|
-| 0 | Success (below threshold) |
-| 1 | Threshold exceeded |
+| 0 | Allowed — scan completed and policy allowed execution |
+| 1 | Rejected — critical finding or preflight reject |
+| 2 | Invalid input, required analyzer failure, or insufficient inspection |
+
+The score never affects the exit code.
 
 ---
 
 ## Rationale
 
-### Why These Weights?
+### Why severity-only in scan mode?
 
-| Category | Weight Rationale |
-|----------|------------------|
-| Prompt Injection (2.5) | Highest - directly compromises agent integrity |
-| Code Execution (2.5) | Highest - potential for system compromise |
-| Exfiltration (2.0) | High - data breach risk |
-| Secrets (2.0) | High - credential compromise |
-| PII Exfiltration (2.0) | High - privacy violation |
-| Compliance (1.5) | Medium - regulatory risk |
-| Behavioral Manipulation (1.5) | Medium - agent behavior corruption |
-| PII Detection (1.5) | Medium - privacy exposure |
-| Dependencies (1.0) | Lower - requires exploit chain |
-| Specification (1.0) | Lower - prevents other checks |
+The canonical scan kernel treats the score as a secondary prioritization signal: the policy decision (critical findings, preflight gates, inspection completeness) is what blocks. A severity-only sum keeps the signal transparent — reviewers can reproduce it from the finding list without category internals, and it can never contradict the policy exit.
+
+### Why category weights in lint/grouped mode?
+
+The grouped reporter keeps category weighting to rank spec-plus-security mixes: PII carries the highest weight (2.5) because exposure is hard to remediate after the fact, secrets (SC 2.0) and code execution (CE 1.5) follow, and SPEC (0.5) is lowest because spec issues reduce clarity more than safety.
 
 ### Why Cap at 10.0?
 

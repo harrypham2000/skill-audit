@@ -1,6 +1,8 @@
 # Compliance Frameworks
 
-This reference documents the regulatory frameworks validated by skill-audit when checking AI agent skills for compliance.
+> **Feature status: unavailable.** The checklists below exist as library code only — scans do not currently execute them, and compliance findings/scores are not produced by the canonical scan pipeline. A run without compliance checks reports `complianceStatus: "not_run"` instead of a perfect score.
+
+This reference documents the regulatory frameworks represented by skill-audit's compliance checklists for AI agent skills.
 
 ## Overview
 

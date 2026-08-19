@@ -29,6 +29,14 @@ skill-audit/docs/
 # Logs
 *.log
 
+# Local credentials and publish artifacts
+.npmrc
+*.tgz
+
+# Local agent/session and generated release-planning artifacts
+omp-session-*.html
+release-units/
+
 # TypeScript
 *.tsbuildinfo
 

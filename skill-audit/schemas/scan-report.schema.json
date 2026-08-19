@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/harrypham2000/skill-audit/schemas/scan-report.schema.json",
+  "title": "skill-audit canonical scan report",
+  "description": "Versioned schema for --mode scan output (schemaVersion 1).",
+  "type": "object",
+  "required": ["schemaVersion", "scanner", "input", "findings", "capabilities", "analyzerRuns", "diagnostics", "exclusions", "scanStatus", "decision", "suppressedCount", "riskScore"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "scanner": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "skill-audit" },
+        "version": { "type": "string" }
+      }
+    },
+    "input": {
+      "type": "object",
+      "required": ["skill", "path", "fileCount", "totalBytes", "snapshotDigest"],
+      "properties": {
+        "skill": { "type": "string" },
+        "path": { "type": "string" },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "totalBytes": { "type": "integer", "minimum": 0 },
+        "snapshotDigest": { "type": "string" }
+      }
+    },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "capabilities": { "type": "array", "items": { "$ref": "#/$defs/capability" } },
+    "analyzerRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["analyzer", "status", "findings", "durationMs"],
+        "properties": {
+          "analyzer": { "type": "string" },
+          "status": { "enum": ["completed", "partial", "skipped", "failed", "not_applicable"] },
+          "detail": { "type": "string" },
+          "findings": { "type": "integer", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "message"],
+        "properties": {
+          "source": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason"],
+        "properties": {
+          "path": { "type": "string" },
+          "reason": {
+            "enum": ["default-exclude", "ignore-pattern", "symlink-escape", "symlink-disabled", "depth-exceeded", "file-count-exceeded", "total-bytes-exceeded", "unreadable", "timeout"]
+          }
+        }
+      }
+    },
+    "scanStatus": { "enum": ["complete", "partial", "failed"] },
+    "decision": { "$ref": "#/$defs/decision" },
+    "suppressedCount": { "type": "integer", "minimum": 0 },
+    "preflight": { "$ref": "#/$defs/preflight" },
+    "riskScore": { "type": "number", "minimum": 0, "maximum": 10 }
+  },
+  "$defs": {
+    "sourceLocation": {
+      "type": "object",
+      "description": "1-based source range. startColumn is inclusive; endColumn is EXCLUSIVE. precision 'exact' comes from parsed syntax offsets; 'line-only' honestly degrades regex-grade evidence.",
+      "required": ["file", "startLine", "startColumn", "endLine", "endColumn", "precision"],
+      "properties": {
+        "file": { "type": "string" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "endColumn": { "type": "integer", "minimum": 1 },
+        "precision": { "enum": ["exact", "line-only"] }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["id", "category", "asi", "severity", "file", "message"],
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "asi": { "type": "string" },
+        "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "location": { "$ref": "#/$defs/sourceLocation" },
+        "message": { "type": "string" },
+        "evidence": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "confidence": { "enum": ["high", "medium", "low"] },
+        "cwe": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "suppressed": { "type": "boolean" },
+        "suppression": {
+          "type": "object",
+          "required": ["reason"],
+          "properties": {
+            "reason": { "type": "string" },
+            "approver": { "type": "string" },
+            "ticket": { "type": "string" },
+            "created": { "type": "string" },
+            "expires": { "type": "string" }
+          }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "required": ["capability", "level", "evidence", "file", "line"],
+      "properties": {
+        "capability": { "enum": ["process.exec", "network.request", "fs.read", "fs.write", "env.read", "mcp.invoke"] },
+        "level": { "const": "observed" },
+        "evidence": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "scope": {
+          "type": "object",
+          "description": "Optional target scope for scoped capabilities (currently mcp.invoke): which MCP server and/or tool the evidence invokes.",
+          "properties": {
+            "server": { "type": "string" },
+            "tool": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "location": { "$ref": "#/$defs/sourceLocation" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["outcome", "rule", "reason", "exitCode"],
+      "properties": {
+        "outcome": { "enum": ["allow", "reject", "indeterminate"] },
+        "rule": { "type": "string" },
+        "reason": { "type": "string" },
+        "exitCode": { "enum": [0, 1, 2] }
+      }
+    },
+    "preflight": {
+      "type": "object",
+      "required": ["outcome", "reasons", "violations"],
+      "properties": {
+        "outcome": { "enum": ["allow", "confirmation_required", "reject", "indeterminate"] },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "capability", "message"],
+            "properties": {
+              "rule": { "type": "string" },
+              "capability": { "type": "string" },
+              "message": { "type": "string" },
+              "evidence": { "type": "string" },
+              "file": { "type": "string" },
+              "line": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

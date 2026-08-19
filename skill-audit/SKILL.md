@@ -37,10 +37,11 @@ Security auditing CLI for AI agent skills.
 npm install -g @hungpg/skill-audit
 
 # Audit skills
-skill-audit -g              # Audit global skills
+skill-audit -g              # Audit global skills (default mode is the canonical scan;
+                            # exits 0 allowed / 1 rejected / 2 invalid or incomplete)
 skill-audit -v              # Verbose output
 skill-audit --json          # JSON for CI
-skill-audit --threshold 5   # Fail if risk > 5
+skill-audit --threshold 5   # Advisory prioritization hint (does not affect exit code)
 
 # Audit the agent execution environment
 skill-audit doctor          # Read-only shell/config/PATH/hook scan
@@ -57,8 +58,8 @@ skill-audit --check-command "npx skills add owner/repo"
 |----------|-------|-----------------|
 | Prompt Injection | ASI01 | Ignore instructions, role bypass, context forgetting |
 | Tool Misuse | ASI02 | Data exfiltration, unauthorized API calls |
-| PII Exposure | ASI03 | Hardcoded secrets, API keys, Vietnamese IDs |
-| Supply Chain | ASI04 | Vulnerable dependencies, credential leaks |
+| PII Exposure | ASI03 | Vietnamese IDs / PII |
+| Supply Chain | ASI04 | Hardcoded secrets, API keys, vulnerable dependencies, credential leaks |
 | Code Execution | ASI05 | Shell injection, dangerous commands |
 | Behavioral | ASI09 | Manipulation attempts, blind trust requests |
 
@@ -81,10 +82,10 @@ Executable skills should declare the narrow session facts they read, the precond
 
 ## Risk Scoring
 
-- **0-3.0**: Safe ✅
-- **3.1-5.0**: Risky ⚠️
-- **5.1-7.0**: Dangerous 🔴
-- **7.1+**: Malicious ☠️
+- **0**: Safe ✅
+- **0.1-3.0**: Risky ⚠️
+- **3.1-7.0**: Dangerous 🔴
+- **7.1-10.0**: Malicious ☠️
 
 ## Postinstall Safety
 
