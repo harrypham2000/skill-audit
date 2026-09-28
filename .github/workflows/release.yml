@@ -79,7 +79,7 @@ jobs:
     needs: verify
     if: needs.verify.result == 'success'
     runs-on: ubuntu-latest
-    environment: npm-publish
+    environment: release-prod
     permissions:
       contents: write
 

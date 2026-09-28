@@ -43,7 +43,7 @@ jobs:
     permissions:
       contents: read
       id-token: write  # Required for npm provenance
-    environment: npm-publish
+    environment: release-prod
 
     env:
       ACTIONS_STEP_DEBUG: false

@@ -63,7 +63,7 @@ jobs:
     needs: validate
     if: needs.validate.result == 'success'
     runs-on: ubuntu-latest
-    environment: npm-publish
+    environment: release-beta
     permissions:
       contents: read
       id-token: write
