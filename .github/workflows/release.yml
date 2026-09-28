@@ -1,7 +1,8 @@
 name: Release
 
 # Releases are created manually from a committed, tested main — never
-# automatically on push. Notes are derived from commits since the last tag.
+# automatically on push. The write-capable release job runs only after the
+# read-only verification job and protected environment approval.
 on:
   workflow_dispatch:
     inputs:
@@ -9,72 +10,87 @@ on:
         description: 'Version to release, without leading v (must match package.json)'
         required: true
 
-permissions:
-  contents: write
+concurrency:
+  group: github-stable-release
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
-  release:
+  verify:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
+
     steps:
-      - name: Checkout
+      - name: Validate the requested version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be a stable SemVer value such as 0.10.1"
+            exit 1
+          fi
+          printf 'version=%s\n' "$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
+          ref: main
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: skill-audit/package-lock.json
 
-      - name: Install dependencies
+      - name: Verify the reviewed package version and tag availability
         working-directory: ./skill-audit
-        run: npm ci
-
-      - name: Verify version matches input
-        working-directory: ./skill-audit
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          if [ "$CURRENT" != "${{ inputs.version }}" ]; then
-            echo "::error::package.json version $CURRENT does not match requested ${{ inputs.version }}. Commit the version bump first."
+          if [ "$CURRENT" != "$RELEASE_VERSION" ]; then
+            echo "::error::package.json version $CURRENT does not match requested $RELEASE_VERSION. Commit the version bump first."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$RELEASE_VERSION" >/dev/null; then
+            echo "::error::tag v$RELEASE_VERSION already exists"
             exit 1
           fi
 
-      - name: Tests
+      - name: Test the reviewed package
         working-directory: ./skill-audit
-        run: npm test
+        run: npm ci && npm test && npm run verify:pack
 
-      - name: Verify packed tarball
-        working-directory: ./skill-audit
-        run: npm run verify:pack
+      - name: Record the reviewed commit
+        id: commit
+        run: printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Derive release notes from commits
-        working-directory: ./skill-audit
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -n "$LAST_TAG" ]; then
-            git log --no-merges --pretty=format:"- %s (%h)" "$LAST_TAG..HEAD" > /tmp/notes.md
-          else
-            git log --no-merges --pretty=format:"- %s (%h)" > /tmp/notes.md
-          fi
-          {
-            echo "## Changes"
-            cat /tmp/notes.md
-            echo ""
-            echo "## Install"
-            echo '```bash'
-            echo "npm install -g @hungpg/skill-audit@${{ inputs.version }}"
-            echo '```'
-          } > release-notes.md
+  release:
+    needs: verify
+    if: needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: write
 
-      - name: Create GitHub Release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: v${{ inputs.version }}
-          name: Release v${{ inputs.version }}
-          bodyFile: release-notes.md
-          draft: false
-          prerelease: false
+    steps:
+      - name: Create the GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+          RELEASE_SHA: ${{ needs.verify.outputs.sha }}
+        run: |
+          gh release create "v$RELEASE_VERSION" \
+            --target "$RELEASE_SHA" \
+            --title "Release v$RELEASE_VERSION" \
+            --generate-notes
