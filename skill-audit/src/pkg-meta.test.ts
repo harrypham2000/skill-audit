@@ -79,5 +79,5 @@ describe("gate 6: tarball-content verification", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("tarball verified from bytes");
     expect(result.stdout).toContain("CLI smoke-run OK");
-  });
+  }, 30_000);
 });

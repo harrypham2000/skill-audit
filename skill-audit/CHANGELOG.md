@@ -2,6 +2,14 @@
 
 All notable changes to `@hungpg/skill-audit` are documented here.
 
+## [0.10.1] - 2026-09-28
+
+### Changed
+
+- Context-contract v1 validation now rejects empty declarations and unsupported fields instead of silently accepting ineffective or misspelled policy.
+- `confirmation: always` and applicable `on-risk` confirmation boundaries now cover observed network and MCP use as well as shell execution.
+- Context-read warnings now identify broader workspace, system-instruction, secret, and conversation scopes.
+
 ## [0.10.0] - 2026-08-19
 
 ### Added
