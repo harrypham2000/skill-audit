@@ -1,6 +1,6 @@
 name: Beta Release
 
-# Beta releases publish an already reviewed beta-version commit from main.
+# Beta releases publish an already reviewed beta-version commit from beta.
 # The workflow never mutates a branch: that keeps the publishing identity
 # separate from source changes and lets branch protection govern the version bump.
 on:
@@ -19,7 +19,7 @@ env:
 
 jobs:
   validate:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/beta'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,10 +28,10 @@ jobs:
       sha: ${{ steps.commit.outputs.sha }}
 
     steps:
-      - name: Checkout main
+      - name: Checkout beta
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          ref: main
+          ref: beta
           fetch-depth: 0
           fetch-tags: true
 
