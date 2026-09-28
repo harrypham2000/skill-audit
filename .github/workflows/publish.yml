@@ -9,12 +9,41 @@ on:
         description: 'Tagged version to publish, without leading v (for example: 0.9.4)'
         required: true
 
+concurrency:
+  group: npm-stable-publish
+  cancel-in-progress: false
+
+permissions: {}
+
 jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Validate the requested version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be a stable SemVer value such as 0.10.1"
+            exit 1
+          fi
+          printf 'version=%s\n' "$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: validate
+    if: needs.validate.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write  # Required for npm provenance
+    environment: npm-publish
 
     env:
       ACTIONS_STEP_DEBUG: false
@@ -25,15 +54,17 @@ jobs:
       - name: Checkout the tagged commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          ref: v${{ inputs.version }}
+          ref: v${{ needs.validate.outputs.version }}
           fetch-depth: 0
 
       - name: Verify tag matches package.json
         working-directory: ./skill-audit
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          if [ "$CURRENT" != "${{ inputs.version }}" ]; then
-            echo "::error::tag v${{ inputs.version }} points at package.json version $CURRENT; refusing to publish a mismatched artifact"
+          if [ "$CURRENT" != "$RELEASE_VERSION" ]; then
+            echo "::error::tag v$RELEASE_VERSION points at package.json version $CURRENT; refusing to publish a mismatched artifact"
             exit 1
           fi
 
