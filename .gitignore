@@ -6,6 +6,9 @@
 .gemini_security/
 QWEN.md
 
+# Amp orb portal metadata
+.amp/portals/
+
 # MCP and agent config
 .mcp.json
 .codemogger/

@@ -44,7 +44,9 @@ export interface ContractParseResult {
 }
 
 const CONFIRMATION_VALUES: ReadonlySet<string> = new Set(["never", "on-risk", "always"]);
-const BROAD_READ_PATTERN = /full[_ -]?conversation|all[_ -]?context|all[_ -]?files/i;
+const CONTEXT_KEYS: ReadonlySet<string> = new Set(["version", "reads", "requires", "writes", "confirmation", "capabilities"]);
+const CAPABILITY_KEYS: ReadonlySet<string> = new Set(["network", "mcp"]);
+const BROAD_READ_PATTERN = /full[_ -]?(?:conversation|transcript|history)|all[_ -]?(?:context|files)|(?:entire|whole)[_ -]?(?:workspace|repository)|system[_ -]?(?:prompt|instructions)|(?:all|any)[_ -]?(?:secrets?|environment)/i;
 
 export function parseContextContract(raw: unknown): ContractParseResult {
   if (raw === undefined || raw === null) return { errors: [] };
@@ -54,6 +56,9 @@ export function parseContextContract(raw: unknown): ContractParseResult {
     return { errors: ["context must be a mapping"] };
   }
   const obj = raw as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (!CONTEXT_KEYS.has(key)) errors.push(`context.${key} is not supported by schema v1`);
+  }
 
   if (obj.version !== undefined && obj.version !== 1) {
     errors.push(`context.version must be 1 (got ${JSON.stringify(obj.version)})`);
@@ -62,8 +67,8 @@ export function parseContextContract(raw: unknown): ContractParseResult {
   const stringArray = (key: string): string[] | undefined => {
     const value = obj[key];
     if (value === undefined) return undefined;
-    if (!Array.isArray(value) || value.some(v => typeof v !== "string" || v.trim() === "")) {
-      errors.push(`context.${key} must be an array of non-empty strings`);
+    if (!Array.isArray(value) || value.length === 0 || value.some(v => typeof v !== "string" || v.trim() === "")) {
+      errors.push(`context.${key} must be a non-empty array of non-empty strings`);
       return undefined;
     }
     return value as string[];
@@ -75,10 +80,13 @@ export function parseContextContract(raw: unknown): ContractParseResult {
       errors.push("context.capabilities must be a mapping");
     } else {
       const caps = obj.capabilities as Record<string, unknown>;
+      for (const key of Object.keys(caps)) {
+        if (!CAPABILITY_KEYS.has(key)) errors.push(`context.capabilities.${key} is not supported by schema v1`);
+      }
       for (const key of ["network", "mcp"] as const) {
         if (caps[key] === undefined) continue;
-        if (!Array.isArray(caps[key]) || caps[key].some(v => typeof v !== "string" || v.trim() === "")) {
-          errors.push(`context.capabilities.${key} must be an array of non-empty strings`);
+        if (!Array.isArray(caps[key]) || caps[key].length === 0 || caps[key].some(v => typeof v !== "string" || v.trim() === "")) {
+          errors.push(`context.capabilities.${key} must be a non-empty array of non-empty strings`);
         } else {
           capabilities[key] = caps[key] as string[];
         }
@@ -293,22 +301,6 @@ export function evaluatePreflight(input: PreflightInput): PreflightDecision {
     reasons.push("Undeclared shell execution is a direct reject");
   }
 
-  if (execObserved.length > 0 && execDeclared) {
-    const confirmation = input.contract?.confirmation;
-    const needsConfirmation =
-      confirmation === "always" ||
-      (confirmation === "on-risk" && input.hasRiskFindings === true) ||
-      (confirmation === "on-risk" && input.environmentDrift === true);
-    if (needsConfirmation && !skillApproved) {
-      violations.push({
-        rule: "confirmation.required",
-        capability: "process.exec",
-        message: `Contract requires confirmation (${confirmation}) and no approval was recorded for this invocation`,
-      });
-      reasons.push("Required confirmation cannot pass without approval");
-    }
-  }
-
   // ---- Network capability comparison ----
   const netObserved = input.capabilities.filter(c => c.capability === "network.request");
   if (netObserved.length > 0) {
@@ -376,6 +368,23 @@ export function evaluatePreflight(input: PreflightInput): PreflightDecision {
         reasons.push("Out-of-scope MCP server is a direct reject");
       }
     }
+  }
+
+  const confirmation = input.contract?.confirmation;
+  const observedCapabilityUse = execObserved.length > 0 || netObserved.length > 0 || mcpObserved.length > 0;
+  const needsConfirmation =
+    observedCapabilityUse && (
+      confirmation === "always" ||
+      (confirmation === "on-risk" && input.hasRiskFindings === true) ||
+      (confirmation === "on-risk" && input.environmentDrift === true)
+    );
+  if (needsConfirmation && !skillApproved) {
+    violations.push({
+      rule: "confirmation.required",
+      capability: "invocation",
+      message: `Contract requires confirmation (${confirmation}) and no approval was recorded for this invocation`,
+    });
+    reasons.push("Required confirmation cannot pass without approval");
   }
 
   if (input.environmentDrift) {

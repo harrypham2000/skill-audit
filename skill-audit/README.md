@@ -54,9 +54,9 @@ skill-audit --mode preflight --skill-path ./my-skill --no-drift-check     # skip
 Outcomes map onto the exit contract: `allow` → 0, `confirmation_required`/`reject` → 1, `indeterminate` → 2.
 
 - **Undeclared shell execution is rejected.** `process.exec` observed (fenced shell blocks, shebangs, exec calls) without `allowed-tools` declaring shell tools is a direct reject with file:line evidence.
-- **Confirmation boundaries are enforced.** A contract with `confirmation: always` (or `on-risk` when risk findings exist) cannot pass without an approval recorded for this invocation.
+- **Confirmation boundaries are enforced.** A contract with `confirmation: always` (or `on-risk` when risk findings exist) cannot pass observed shell, network, or MCP use without an approval recorded for this invocation.
 - **Environment drift degrades the decision.** When the trusted baseline (`skill-audit trust env`) has drifted, preflight returns `indeterminate` until the environment is re-trusted.
-- **Invalid contract values fail validation.** Context contracts are validated against schema v1 (`version: 1`, string-array `reads`/`requires`/`writes`, `confirmation` in `never|on-risk|always`); violations produce `CTX-007` findings and an `indeterminate` preflight.
+- **Invalid contract values fail validation.** Context contracts are validated against schema v1: supported fields only, non-empty string arrays for `reads`/`requires`/`writes` and declared capability scopes, plus `confirmation` in `never|on-risk|always`. Violations produce `CTX-007` findings and an `indeterminate` preflight.
 
 ## Structural analysis and taint paths
 

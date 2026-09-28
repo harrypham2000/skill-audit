@@ -44,14 +44,30 @@ describe("parseContextContract schema validation", () => {
     expect(errors.some(e => e.includes("requires"))).toBe(true);
   });
 
+  it("rejects empty arrays and unsupported keys that would otherwise be ignored", () => {
+    const { errors } = parseContextContract({
+      reads: [],
+      typo: ["user_goal"],
+      capabilities: { network: [], filesystem: ["src/**"] },
+    });
+    expect(errors).toEqual(expect.arrayContaining([
+      expect.stringContaining("reads"),
+      expect.stringContaining("context.typo"),
+      expect.stringContaining("capabilities.network"),
+      expect.stringContaining("capabilities.filesystem"),
+    ]));
+  });
+
   it("rejects non-mapping context", () => {
     expect(parseContextContract(["list"]).errors.length).toBeGreaterThan(0);
     expect(parseContextContract("nope").errors.length).toBeGreaterThan(0);
   });
 
   it("flags overbroad reads", () => {
-    const { contract } = parseContextContract({ reads: ["full_conversation"] });
-    expect(hasBroadReads(contract!)).toBe(true);
+    for (const read of ["full_conversation", "entire_workspace", "system_instructions", "all_secrets"]) {
+      const { contract } = parseContextContract({ reads: [read] });
+      expect(hasBroadReads(contract!)).toBe(true);
+    }
   });
 });
 
@@ -157,6 +173,40 @@ describe("evaluatePreflight", () => {
     };
     expect(evaluatePreflight({ ...base, hasRiskFindings: false }).outcome).toBe("allow");
     expect(evaluatePreflight({ ...base, hasRiskFindings: true }).outcome).toBe("confirmation_required");
+  });
+
+  it("requires confirmation for declared network use", () => {
+    const networkCapability = {
+      capability: "network.request" as const,
+      level: "observed" as const,
+      evidence: "curl https://data.example/feed",
+      file: "SKILL.md",
+      line: 5,
+    };
+    const base = {
+      capabilities: [networkCapability],
+      contract: { version: 1 as const, confirmation: "always" as const, capabilities: { network: ["data.example"] } },
+      skillName: "my-skill",
+    };
+    expect(evaluatePreflight(base).outcome).toBe("confirmation_required");
+    expect(evaluatePreflight({ ...base, approvals: ["my-skill"] }).outcome).toBe("allow");
+  });
+
+  it("requires confirmation for declared MCP use", () => {
+    const base = {
+      capabilities: [{
+        capability: "mcp.invoke" as const,
+        level: "observed" as const,
+        evidence: "linear.get_issue",
+        file: "SKILL.md",
+        line: 5,
+        scope: { server: "linear", tool: "get_issue" },
+      }],
+      contract: { version: 1 as const, confirmation: "always" as const, capabilities: { mcp: ["linear"] } },
+      skillName: "my-skill",
+    };
+    expect(evaluatePreflight(base).outcome).toBe("confirmation_required");
+    expect(evaluatePreflight({ ...base, approvals: ["my-skill"] }).outcome).toBe("allow");
   });
 
   it("environment drift changes the decision to indeterminate", () => {
