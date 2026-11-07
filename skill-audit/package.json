@@ -30,7 +30,8 @@
     "rules",
     "CHANGELOG.md",
     "README.md",
-    "SKILL.md"
+    "SKILL.md",
+    "agents"
   ],
   "keywords": [
     "security",

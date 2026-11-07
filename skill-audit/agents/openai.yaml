@@ -1,0 +1,5 @@
+interface:
+  display_name: "Skill Audit"
+  short_description: "Audit agent skills and the agent environment for security risks"
+policy:
+  allow_implicit_invocation: true

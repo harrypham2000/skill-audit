@@ -1,20 +1,6 @@
 ---
 name: skill-audit
-description: Security auditing tool for AI agent skills. Use when reviewing skill security, detecting vulnerabilities in skill code, checking for PII leakage, or validating skills against OWASP Agentic Top 10.
-context:
-  reads:
-    - user_goal
-    - target_skill_path
-    - agent_environment_config
-    - shell_command_under_review
-  requires:
-    - explicit_user_intent_for_audit_or_environment_check
-  writes:
-    - risk_summary
-    - findings_count
-    - environment_drift_summary
-    - recommended_next_action
-  confirmation: on-risk
+description: Security auditing CLI for AI agent skills — detects prompt injection, data exfiltration, PII and secret leakage, unsafe shell and code execution, and vulnerable dependencies mapped to the OWASP Agentic Top 10, with a 0/1/2 policy exit contract. Use when auditing or reviewing agent skills for security, before installing external or third-party skills, when validating skills for distribution, investigating skill dependency CVEs or security alerts, concerned about prompt injection, data exfiltration, PII or hardcoded secrets, or unsafe execution, checking agent environment safety such as hooks, shell startup files, PATH hijacking or MCP configs, detecting environment drift against a trusted baseline, or assessing a shell command before an agent runs it.
 ---
 
 # skill-audit
@@ -79,6 +65,24 @@ Use `skill-audit trust env` and `skill-audit diff-env` to keep a compact trusted
 ## Session Context Contracts
 
 Executable skills should declare the narrow session facts they read, the preconditions required before invocation, what they write back after execution, and when user confirmation is needed. `skill-audit` reports `CTX-*` findings when executable skills lack these boundaries.
+
+This skill's own contract:
+
+```yaml
+reads:
+  - user_goal
+  - target_skill_path
+  - agent_environment_config
+  - shell_command_under_review
+requires:
+  - explicit_user_intent_for_audit_or_environment_check
+writes:
+  - risk_summary
+  - findings_count
+  - environment_drift_summary
+  - recommended_next_action
+confirmation: on-risk
+```
 
 ## Risk Scoring
 
