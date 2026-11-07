@@ -8,7 +8,7 @@
  * Exits non-zero on any violation so it can gate `prepack`.
  */
 import { execFileSync, spawnSync } from "child_process";
-import { mkdtempSync, rmSync, existsSync, statSync, readdirSync, symlinkSync } from "fs";
+import { constants, copyFileSync, mkdtempSync, rmSync, existsSync, statSync, readdirSync, symlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -20,6 +20,37 @@ const REQUIRED = [
   "README.md",
 ];
 const FORBIDDEN = [/\.test\.js$/, /\.test\.d\.ts$/, /\.spec\.js$/, /\/tests?\//];
+// npm walks directories in package.json's files list, including ignored local
+// files. Add new public files here deliberately before publishing them.
+const PUBLIC_FILES = new Set([
+  ...(
+    "api ast auto-update compliance context deps discover environment features gateway hooks " +
+    "index intel lifecycle-safety mcp paths patterns python remote reporter sarif scan scoring " +
+    "security semantic shell spec suppress types"
+  ).split(" ").map((name) => `dist/${name}.js`),
+  "package.json",
+  "README.md",
+  "CHANGELOG.md",
+  "SKILL.md",
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "agents/openai.yaml",
+  "examples/example-audit-output.json",
+  "examples/example-compliance-report.md",
+  "examples/example-lint-output.txt",
+  "references/compliance-frameworks.md",
+  "references/intelligence-sources.md",
+  "references/pii-patterns.md",
+  "references/postinstall-safety.md",
+  "references/scoring-methodology.md",
+  "rules/default-patterns.json",
+  "schemas/scan-report.schema.json",
+  "scripts/postinstall.cjs",
+  "scripts/test-audit.sh",
+  "scripts/validate-skill.sh",
+  "scripts/verify-tarball.mjs",
+]);
 
 function listFiles(dir, prefix = "") {
   const out = [];
@@ -68,6 +99,7 @@ function main() {
       else if (statSync(join(pkgDir, required)).size === 0) errors.push(`required file is empty: ${required}`);
     }
     for (const file of files) {
+      if (!PUBLIC_FILES.has(file)) errors.push(`unexpected file in tarball: ${file}`);
       for (const pattern of FORBIDDEN) {
         if (pattern.test(file)) errors.push(`forbidden file in tarball: ${file}`);
       }
@@ -88,7 +120,11 @@ function main() {
     if (errors.length > 0) {
       console.error(`❌ tarball verification failed (${errors.length} problem(s)):`);
       for (const err of errors) console.error(`   - ${err}`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
+    }
+    if (process.env.SKILL_AUDIT_VERIFIED_TARBALL) {
+      copyFileSync(tarball, process.env.SKILL_AUDIT_VERIFIED_TARBALL, constants.COPYFILE_EXCL);
     }
     console.log(`✅ tarball verified from bytes: ${files.length} files, required present, no test artifacts, CLI smoke-run OK (${tarballName})`);
   } finally {

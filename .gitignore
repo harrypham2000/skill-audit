@@ -37,6 +37,15 @@ skill-audit/docs/
 # Local credentials and publish artifacts
 .npmrc
 *.tgz
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Unpublished business material (prefer storage outside the checkout)
+private/
 
 # Local agent/session and generated release-planning artifacts
 omp-session-*.html

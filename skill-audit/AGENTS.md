@@ -16,10 +16,15 @@ When asked to make changes to skill-audit:
 
 When asked to publish a new version:
 
-1. **Option A - Automated (Preferred)**
-   - Commit with conventional format: `feat:`, `fix:`, `BREAKING CHANGE:`
-   - Push to main
-   - Auto Release workflow handles versioning and publishing
+Keep unpublished business material outside the checkout. The `private/` ignore
+rule is a convenience, not an access control. Normal packaging checks the
+tarball against the public file list in `scripts/verify-tarball.mjs`; add new
+public files there deliberately, and do not bypass lifecycle scripts when
+packing an unreviewed directory.
+
+1. **Option A - GitHub Actions**
+   - Commit and test the version first.
+   - Use the manually dispatched release and publish workflows.
 
 2. **Option B - Manual**
    ```bash
@@ -32,9 +37,9 @@ When asked to publish a new version:
 
 ### Troubleshooting
 
-- **EOTP error**: npm token requires 2FA - regenerate at npm website without 2FA
-- **Version mismatch**: Delete and recreate git tag on correct commit
-- **Publish fails**: Check GitHub secret `NPM_TOKEN` is valid
+- **EOTP error**: Keep 2FA enabled; complete the required OTP or use configured npm trusted publishing.
+- **Version mismatch**: Investigate the tag and package version; changing a published tag requires approval.
+- **Publish fails**: Check the configured authentication method without printing credentials.
 
 ## Security Auditing Context
 
@@ -48,5 +53,5 @@ When using skill-audit to audit other skills:
 ## Reference
 
 - `references/postinstall-safety.md` - Documentation pattern for safe postinstall scripts
-- `.github/workflows/release.yml` - Auto Release workflow
+- `.github/workflows/release.yml` - Manual release workflow
 - `.github/workflows/publish.yml` - npm publish workflow

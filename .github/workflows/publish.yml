@@ -56,6 +56,7 @@ jobs:
         with:
           ref: v${{ needs.validate.outputs.version }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify tag matches package.json
         working-directory: ./skill-audit
@@ -86,8 +87,16 @@ jobs:
 
       - name: Verify packed tarball (bytes)
         working-directory: ./skill-audit
-        run: npm run verify:pack
+        env:
+          SKILL_AUDIT_VERIFIED_TARBALL: ${{ runner.temp }}/skill-audit-verified.tgz
+        run: |
+          rm -f -- "$SKILL_AUDIT_VERIFIED_TARBALL"
+          npm run verify:pack
+          if [ ! -f "$SKILL_AUDIT_VERIFIED_TARBALL" ]; then
+            echo '::error::The tagged commit does not export a verified tarball; update the release before publishing.'
+            exit 1
+          fi
 
       - name: Publish from the verified tag
         working-directory: ./skill-audit
-        run: npm publish --access public
+        run: npm publish "$RUNNER_TEMP/skill-audit-verified.tgz" --access public --ignore-scripts

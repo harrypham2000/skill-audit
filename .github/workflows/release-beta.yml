@@ -34,6 +34,7 @@ jobs:
           ref: beta
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
@@ -74,6 +75,7 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
@@ -93,11 +95,19 @@ jobs:
 
       - name: Verify packed tarball (bytes)
         working-directory: ./skill-audit
-        run: npm run verify:pack
+        env:
+          SKILL_AUDIT_VERIFIED_TARBALL: ${{ runner.temp }}/skill-audit-verified.tgz
+        run: |
+          rm -f -- "$SKILL_AUDIT_VERIFIED_TARBALL"
+          npm run verify:pack
+          if [ ! -f "$SKILL_AUDIT_VERIFIED_TARBALL" ]; then
+            echo '::error::The reviewed beta commit does not export a verified tarball; update it before publishing.'
+            exit 1
+          fi
 
       - name: Publish the committed, verified beta
         working-directory: ./skill-audit
-        run: npm publish --tag beta --access public
+        run: npm publish "$RUNNER_TEMP/skill-audit-verified.tgz" --tag beta --access public --ignore-scripts
 
   release:
     needs: [validate, publish]

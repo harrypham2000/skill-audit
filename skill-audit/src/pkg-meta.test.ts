@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { spawnSync } from "child_process";
+import { tmpdir } from "os";
+import { join } from "path";
 
 interface Pkg {
   engines?: { node?: string };
@@ -67,6 +70,45 @@ describe("gate 6: tarball-content verification", () => {
     expect(pkg.scripts["verify:pack"]).toContain("verify-tarball.mjs");
     expect(pkg.scripts.prepack).toBe("npm run verify:pack");
   });
+
+  it("rejects unexpected private files before npm creates a package", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skill-audit-package-test-"));
+    try {
+      for (const path of ["dist", "schemas", "rules", "scripts", "references", "node_modules"]) {
+        mkdirSync(join(dir, path));
+      }
+      writeFileSync(join(dir, "package.json"), JSON.stringify({
+        ...pkg,
+        scripts: { prepack: "node scripts/verify-tarball.mjs" },
+      }));
+      copyFileSync(new URL("../scripts/verify-tarball.mjs", import.meta.url), join(dir, "scripts/verify-tarball.mjs"));
+      for (const [path, content] of Object.entries({
+        "dist/index.js": "console.log('fixture')",
+        "dist/api.js": "export {}",
+        "schemas/scan-report.schema.json": "{}",
+        "rules/default-patterns.json": "{}",
+        "README.md": "Public fixture",
+        "references/.env": "dummy fixture",
+        "references/business-plan.md": "dummy fixture",
+      })) {
+        writeFileSync(join(dir, path), content);
+      }
+      const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+      const tarball = join(dir, "verified.tgz");
+      const result = spawnSync(npm, ["pack", "--json"], {
+        cwd: dir,
+        env: { ...process.env, SKILL_AUDIT_VERIFIED_TARBALL: tarball },
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("unexpected file in tarball: references/.env");
+      expect(result.stderr).toContain("unexpected file in tarball: references/business-plan.md");
+      expect(existsSync(tarball)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it("the clean build-and-pack pipeline accepts the current package contents", () => {
     const { spawnSync } = require("child_process") as typeof import("child_process");
