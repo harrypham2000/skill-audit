@@ -1,11 +1,11 @@
-# skill-audit
+# skill-audit — Community Edition
 
 Security auditing CLI for AI agent skills.
 
 ## Features
 
 - **Static Analysis**: Detect prompt injection, dangerous scripts, hardcoded secrets
-- **Dependency Scanning**: osv-scanner > trivy > OSV API (network opt-in) for known vulnerabilities in dependencies
+- **Dependency Scanning**: osv-scanner > trivy > OSV API (`--network`-only for the API route) for known vulnerabilities in dependencies; local scanner binaries may make their own network requests (see [Privacy limitations](#privacy-limitations))
 - **Risk Scoring**: 0-10 score mapped to OWASP Agentic Top 10 (ASI01-ASI10)
 - **Multi-Agent Support**: Groups results by agent (Claude Code, Qwen Code, Gemini CLI, etc.)
 - **Agent Environment Doctor**: Detect risky hooks, shell startup files, PATH hijacking, MCP/tool configs, and workspace lifecycle scripts
@@ -39,7 +39,7 @@ Critical findings and incomplete inspection are direct policy gates; the aggrega
 
 ### Dependency scanning and network behavior
 
-Dependency scanning uses **one authoritative route per run**, in fixed precedence: `osv-scanner` CLI → `trivy` CLI → OSV API. The OSV API route and background intelligence-feed refresh perform network I/O and are **opt-in via `--network`**; by default scans are fully offline and deterministic. Scanner errors and stale feeds are reported as diagnostics in the canonical report — they never become findings and never affect the risk score or exit decision. When local KEV/EPSS caches exist, dependency findings are enriched with known-exploited markers and EPSS scores (refresh caches with `--update-db`).
+Dependency scanning uses **one authoritative route per run**, in fixed precedence: `osv-scanner` CLI → `trivy` CLI → OSV API. The OSV API route and background intelligence-feed refresh perform network I/O and are **opt-in via `--network`**. The local CLI routes run without `--network`, but the scanner binaries themselves may perform their own network I/O (osv-scanner may query the OSV.dev API; Trivy may auto-download its vulnerability, Java, and checks databases); the package invokes them with fixed arguments and offers no flags to change that — see [Privacy limitations](#privacy-limitations). Pass `--no-deps` to skip dependency scanning entirely. Scanner errors and stale feeds are reported as diagnostics in the canonical report — they never become findings and never affect the risk score or exit decision. When local KEV/EPSS caches exist, dependency findings are enriched with known-exploited markers and EPSS scores (refresh caches with `--update-db`).
 
 ## Preflight: declared vs observed
 
@@ -133,6 +133,76 @@ skill-audit --mode scan --skill-path ./my-skill --suppressions ./suppressions.js
 
 Governance rules: a substantive `reason` is mandatory (files without one are rejected and ignored, with a diagnostic); expired suppressions reactivate automatically; any change to source, evidence, rule, or scanner version changes the fingerprint and reactivates the finding; suppressed findings stay visible in JSON and SARIF output (with suppression metadata) but never affect the policy decision, score, or a `partial`/`failed` scan status. SARIF 2.1.0 output includes `partialFingerprints` for code-scanning matching, and its decisions always agree with the JSON report. The canonical report schema is published at [`schemas/scan-report.schema.json`](./schemas/scan-report.schema.json).
 
+## Consuming canonical scan reports from another tool
+
+The canonical scan produces a versioned JSON report designed for machine
+consumption. Two stable surfaces exist; treat both as contracts:
+
+1. **The exit code.** `0` allowed, `1` rejected, `2` invalid input, a required
+   analyzer failure, or insufficient inspection. The exit code is decided by the
+   policy, never by the risk score.
+2. **The JSON report.** Capture stdout with `--json`, or write it to a file with
+   `--output <file>`. The two shapes differ:
+   - **stdout (`--json`)**: `{ "features": […], "decision": {…}, "reports": […] }`.
+   - **file (`--output`)**: the same fields plus `generated`, `mode`, and a
+     top-level `schemaVersion: "1"`.
+
+The top-level `decision` is the **aggregate** across all scanned skills (worst
+case: failure beats rejection beats allow) and matches the process exit code;
+each entry in `reports` carries that skill's own decision, which can differ
+from the aggregate in a multi-skill run:
+
+```json
+{
+  "features": [{ "feature": "pattern-detection", "state": "stable", "detail": "…" }],
+  "decision": { "outcome": "reject", "rule": "findings.critical", "reason": "…", "exitCode": 1 },
+  "reports": [ { "schemaVersion": "1", "scanner": { "name": "skill-audit", "version": "…" }, "…": "one entry per skill" } ]
+}
+```
+
+Each entry in `reports` is one skill's canonical report and validates against
+[`schemas/scan-report.schema.json`](./schemas/scan-report.schema.json)
+(`schemaVersion: "1"`). The fields another tool will almost always need:
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | Report contract version (`"1"`); validate before parsing further |
+| `scanner.version` | Scanner version that produced the report |
+| `input.skill` / `input.path` / `input.snapshotDigest` | Which skill was scanned, where, and the immutable snapshot digest |
+| `scanStatus` | `complete`, `partial`, or `failed` — never treat `partial`/`failed` as a pass |
+| `decision.outcome` / `decision.rule` / `decision.exitCode` | This skill's policy decision; the top-level `decision` is the aggregate and matches the process exit code |
+| `findings[]` | Findings with `id`, `category`, `asi` (OWASP mapping), `severity`, `file`, `line`, `message`, `evidence`, `location` (1-based, `precision: "exact"` or `"line-only"`), and a stable `fingerprint` for suppressions |
+| `capabilities[]` | Observed capability model (`process.exec`, `network.request`, `fs.read`, …) with file:line evidence |
+| `analyzerRuns[]` | Per-analyzer status ledger; `skipped`/`failed` entries tell you what did **not** run |
+| `diagnostics[]` | Scanner/feed errors and staleness — informational, never findings |
+| `suppressedCount` | How many findings a suppression baseline removed from the decision (they remain listed) |
+| `riskScore` | 0–10 advisory prioritization signal only |
+
+Recommended consumer pattern:
+
+```bash
+# Machine-readable report file; exit code still applies
+skill-audit --mode scan --skill-path ./my-skill -o report.json
+```
+
+```js
+// Validate, then branch on the decision — never on riskScore alone
+import { readFileSync } from "node:fs";
+const wrapper = JSON.parse(readFileSync("report.json", "utf8"));
+if (wrapper.schemaVersion !== "1") throw new Error("unknown report wrapper");
+for (const report of wrapper.reports) {
+  if (report.schemaVersion !== "1") throw new Error("unknown report schema");
+  if (report.scanStatus !== "complete") throw new Error(`scan not complete: ${report.scanStatus}`);
+  if (report.decision.outcome !== "allow") {
+    // Per-skill decision; the process exit code is the aggregate in wrapper.decision
+    console.log(report.input.skill, report.decision.rule, report.decision.reason);
+  }
+}
+```
+
+SARIF 2.1.0 (`--sarif <file>`) is available for code-scanning integrations; its
+decisions always agree with the JSON report.
+
 ## Feature Status
 
 Every report states which features actually ran and how far each implementation goes. Scan output (terminal and JSON) includes a `features` list with one of these states: `stable`, `experimental`, `initial slice`, `partially integrated`, `unavailable`, `not run`, `planned` — derived from analyzer outcomes after each run.
@@ -158,6 +228,91 @@ Every report states which features actually ran and how far each implementation 
 Feature labels use one vocabulary — `stable`, `experimental`, `initial slice`, `partially integrated`, `unavailable`, `not run`, `planned` — and runtime statuses in reports are derived from analyzer outcomes, not just the selected mode. Machine-readable fields (for example `complianceStatus: "not_run"`) use their schema spellings.
 
 Compliance scores are only reported when compliance checks actually execute; a run without those checks reports `complianceStatus: "not_run"` instead of a perfect score.
+
+## Community Edition: coverage and privacy limitations
+
+The Community Edition is complete for what it documents, but it has real
+coverage and privacy boundaries. Read these before relying on a scan result.
+
+### Coverage limitations
+
+- **Regex evidence is line-only.** Pattern-detection findings report
+  `precision: "line-only"` source locations; only structural analyzers (TS/JS
+  AST, shell parsing, Python AST) can report exact column ranges. Regex
+  patterns can also miss semantically equivalent constructs they do not match.
+- **Structural analysis is an initial slice.** TS/JS AST, shell structural
+  parsing, and Python AST each cover a defined subset of constructs; parse
+  failures degrade coverage honestly rather than guessing. Python analysis
+  requires a local `python3` on PATH.
+- **Dependency coverage varies by route.** Without a local `osv-scanner`/`trivy`
+  and without `--network`, dependency scanning has no authoritative route and
+  reports that in the analyzer ledger. When a local scanner is present, its
+  route runs without `--network`, but the binaries themselves may make their
+  own network requests regardless (see
+  [Privacy limitations](#privacy-limitations)); `--no-deps` skips dependency
+  scanning entirely at the cost of that coverage. Local KEV/EPSS enrichment is
+  experimental and only as fresh as the local caches.
+- **Compliance checklists are not wired in.** VN AI Law 2026, EU AI Act, and
+  GDPR code exists as library code but scans report compliance as
+  `unavailable`/`not_run`; nothing here constitutes legal compliance
+  validation.
+- **Remote acquisition is fail-closed.** Only local `.zip` archives and local
+  paths are accepted; HTTPS and git acquisition remain disabled pending
+  security review.
+- **Semantic analysis needs explicit opt-in.** Without `--semantic`, `--network`,
+  and a configured provider, no LLM analysis runs; paraphrased or natural-
+  language attacks that regex and AST analyzers do not match are not detected.
+- **Scan limits bound every scan.** Hitting a limit marks the scan `partial`
+  and exits `2`; files beyond limits are excluded and listed in `exclusions`.
+- **Context policy is partial.** Preflight governs process execution, network
+  hosts, and MCP servers; filesystem, environment-secret, and
+  package-installation policy remain future work.
+
+### Privacy limitations
+
+- **No telemetry from this package itself.** The Community Edition contains no
+  analytics, crash reporting, or phone-home of any kind. This does not extend
+  to third-party dependency scanners it may invoke — see the next bullet.
+- **Third-party dependency scanners can make their own network requests.**
+  When a local `osv-scanner` or `trivy` is installed, `--mode scan` invokes
+  them as subprocesses with fixed arguments (`osv-scanner --json -r`;
+  `trivy fs --format json`) — no offline flags, and no skill-audit option
+  passes any through. Their network behavior is version- and config-dependent:
+  osv-scanner may send lockfile/package data to the OSV.dev API, and Trivy may
+  auto-download its vulnerability, Java, and checks databases. Neither
+  skill-audit's `--network` flag nor any scanner flag you may know of is a
+  no-egress guarantee here. `--no-deps` skips dependency scanning entirely (at
+  the cost of dependency coverage); running the subprocesses while enforcing
+  no egress requires network isolation at the environment level. If you
+  separately run and configure these scanner tools yourself, consult their
+  documentation — no single flag protects every network path. The dependency
+  route actually used is reported per scan in `analyzerRuns`.
+- **Opt-in network features of this package.** The OSV API dependency route,
+  `--update-db` feed refreshes, semantic analysis requests, and remote
+  acquisition perform network requests only when you invoke or enable
+  them. Feed downloads go to public advisory sources (CISA KEV, FIRST EPSS,
+  NVD, OSV.dev).
+- **What can leave the machine when you opt in or when a scanner runs:**
+  dependency-scanning queries and scanner subprocesses can disclose package
+  names and versions (lockfile contents) to OSV.dev, Trivy's database
+  endpoints, or dependency registries; semantic analysis sends the scanned
+  skill's source to the provider endpoint you configure. Nothing is sent by
+  this package unless a feature you enabled needs it; scanner subprocess
+  behavior is governed by the scanners themselves.
+- **Reports may contain sensitive text.** Finding evidence quotes matched
+  source lines. Environment-doctor findings redact secret-like values
+  (`ENV-*-SECRET` rules), but scan-mode findings — including hardcoded-secret
+  detections — keep the matched line (truncated to ~100 characters) as
+  evidence. Treat any generated report (JSON, SARIF, terminal log) as
+  sensitive and store it accordingly.
+- **Local state.** The tool writes local state under `~/.skill-audit/`
+  (environment baselines, gateway config and ledger, global config) and, for
+  feed caches, inside the installed package directory. Environment baselines
+  store file hashes and finding summaries — secret-like evidence is redacted
+  in them — not full conversation history. Report files are written only to
+  the paths you choose and are never uploaded by the tool.
+
+This repository ships only the Community Edition under the MIT license.
 
 ## Installation
 
@@ -513,14 +668,14 @@ Note: NVD API rate limits apply (5 requests/30 sec without API key). Set `NVD_AP
 ## Trust Sources
 
 1. Static pattern matching for known attack vectors
-2. osv-scanner > trivy > OSV API (network opt-in) for dependency vulnerability scanning
+2. osv-scanner > trivy > OSV API (`--network`-only for the API route) for dependency vulnerability scanning; local scanner binaries may make their own network requests (see [Privacy limitations](#privacy-limitations))
 3. Heuristic rules for common security issues
 
 ## Requirements
 
 - Node.js 20+
 - npx (for skills CLI)
-- osv-scanner or trivy (optional, local dependency scanning; otherwise the OSV API route requires `--network`)
+- osv-scanner or trivy (optional, local dependency scanning; otherwise the OSV API route requires `--network`. These scanner binaries may perform their own network I/O regardless of `--network`, and skill-audit offers no flags to change that)
 
 ## Troubleshooting
 

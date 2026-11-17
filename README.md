@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
 [![License](https://img.shields.io/npm/l/@hungpg/skill-audit)](https://www.npmjs.com/package/@hungpg/skill-audit)
 
-Security auditing tool for AI agent skills and agent execution environments.
+Security auditing tool for AI agent skills and agent execution environments. The npm package in [`skill-audit/`](./skill-audit/) is the **Community Edition**.
 
 > Part of the [Vercel Skills](https://skills.sh) ecosystem — validating skills against the Agent Skills specification and detecting vulnerabilities across OWASP Agentic Top 10 categories.
 
@@ -206,6 +206,19 @@ jobs:
 | Package | Description |
 |---------|-------------|
 | [`skill-audit`](./skill-audit/) | CLI tool for auditing AI agent skills and agent execution environments |
+
+The npm package in [`skill-audit/`](./skill-audit/) is the **Community
+Edition**: free, MIT-licensed, and complete as documented, including canonical
+scan reports other tools can consume (see the package README's "Consuming
+canonical scan reports" section) and its stated coverage and privacy
+limitations. Note on privacy: while the package itself contains no telemetry,
+optional dependency scanning invokes locally installed `osv-scanner`/`trivy`
+as subprocesses with fixed arguments, and those binaries may make their own
+network requests (queries to OSV.dev, database downloads) regardless of any
+skill-audit flag; the package offers no option to change that. See the
+package README's privacy limitations: use `--no-deps` to skip dependency
+coverage, or enforce no egress with network isolation at the environment
+level.
 
 ## Risk Scoring
 
