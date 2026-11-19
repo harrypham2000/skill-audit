@@ -2,6 +2,20 @@
 
 All notable changes to `@hungpg/skill-audit` are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Reports now carry `coverageGaps`: analyzers that had material in scope but did not cover it. A dependency scan skipped for lack of a scanner (or because of `--no-deps`) while manifests are present is stated explicitly instead of being readable as full coverage.
+- Finding and capability evidence is redacted at report assembly. Secret values become a value-derived `[REDACTED:xxxxxxxx]` placeholder in JSON, SARIF, and terminal output; variable references such as `$TOKEN` or `process.env.X` stay readable.
+
+### Changed
+
+- Finding fingerprints now digest analyzer, rule id, skill-root-relative path, source digest, redacted evidence, and location. The scanner version and absolute checkout path are excluded, so a patch release or a different checkout directory no longer invalidates every suppression. **Existing suppression baselines must be regenerated once.**
+- `scanStatus` continues to describe required inspection; optional coverage is reported in `coverageGaps` rather than folded into the status.
+- `requiredAnalyzers: ["dependencies"]` now actually gates: a skipped dependency run with manifests in scope is insufficient inspection.
+- `location.file` no longer points at the throwaway materialization directory.
+
 ## [0.10.1] - 2026-09-28
 
 ### Changed

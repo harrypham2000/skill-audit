@@ -74,6 +74,7 @@ describe("deriveRuntimeFeatureStates", () => {
     diagnostics: [],
     exclusions: [],
     scanStatus: "complete" as const,
+    coverageGaps: [],
     decision: { outcome: "allow" as const, rule: "policy.default", reason: "", exitCode: 0 as const },
     suppressedCount: 0,
     riskScore: 0,
@@ -122,6 +123,7 @@ describe("gate 5: outcome-derived feature status", () => {
     diagnostics: [],
     exclusions: [],
     scanStatus: "complete" as const,
+    coverageGaps: [],
     decision: { outcome: "allow" as const, rule: "policy.default", reason: "", exitCode: 0 as const },
     suppressedCount: 0,
     riskScore: 0,
@@ -162,6 +164,7 @@ describe("gates 3+5 (round 2): audit removed, outcome-derived statuses", () => {
     diagnostics: [],
     exclusions: [],
     scanStatus: "complete" as const,
+    coverageGaps: [],
     decision: { outcome: "allow" as const, rule: "policy.default", reason: "", exitCode: 0 as const },
     suppressedCount: 0,
     riskScore: 0,
@@ -195,6 +198,7 @@ describe("gate 5 (round 3): failed analyzers surface in feature status", () => {
     diagnostics: [],
     exclusions: [],
     scanStatus: "complete" as const,
+    coverageGaps: [],
     decision: { outcome: "allow" as const, rule: "policy.default", reason: "", exitCode: 0 as const },
     suppressedCount: 0,
     riskScore: 0,
@@ -272,5 +276,42 @@ describe("gate 5 (round 3): failed analyzers surface in feature status", () => {
       report([{ analyzer: "mcp-config", status: "completed" }]),
     ]);
     expect(derived.find(f => f.feature === "mcp-security-analysis")!.state).toBe("partially integrated");
+  });
+});
+
+describe("dependency coverage is a feature state, not a silent skip", () => {
+  const report = (analyzerRuns: Array<{ analyzer: string; status: import("./scan.js").AnalyzerStatus; filesInScope?: number }>) => ({
+    schemaVersion: "1" as const,
+    scanner: { name: "skill-audit", version: "0" },
+    input: { skill: "s", path: "/s", fileCount: 1, totalBytes: 1, snapshotDigest: "d" },
+    findings: [],
+    capabilities: [],
+    analyzerRuns: analyzerRuns.map(a => ({ findings: 0, durationMs: 0, ...a })),
+    diagnostics: [],
+    exclusions: [],
+    scanStatus: "complete" as const,
+    coverageGaps: [],
+    decision: { outcome: "allow" as const, rule: "policy.default", reason: "", exitCode: 0 as const },
+    suppressedCount: 0,
+    riskScore: 0,
+  });
+
+  it("a skipped dependency run with manifests in scope reads unavailable, not not-run", () => {
+    // "not run" reads as "nothing to do"; with manifests present it was a gap.
+    const base = getFeatureStatuses({ mode: "scan", depsEnabled: true });
+    const derived = deriveRuntimeFeatureStates(base, [
+      report([{ analyzer: "dependencies", status: "skipped", filesInScope: 1 }]),
+    ]);
+    const dep = derived.find(f => f.feature === "dependency-scanning")!;
+    expect(dep.state).toBe("unavailable");
+    expect(dep.detail).toContain("1 skipped");
+  });
+
+  it("a skipped dependency run with nothing in scope stays not run", () => {
+    const base = getFeatureStatuses({ mode: "scan", depsEnabled: true });
+    const derived = deriveRuntimeFeatureStates(base, [
+      report([{ analyzer: "dependencies", status: "skipped", filesInScope: 0 }]),
+    ]);
+    expect(derived.find(f => f.feature === "dependency-scanning")!.state).toBe("not run");
   });
 });

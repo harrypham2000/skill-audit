@@ -17,6 +17,7 @@ export {
   type ScanOptions,
   type AnalyzerRun,
   type AnalyzerStatus,
+  type CoverageGap,
   type Diagnostic,
   type PolicyDecision,
   type ScopeExclusion,

@@ -1,11 +1,19 @@
 /**
  * Finding fingerprints and governed suppressions (Phase 4).
  *
- * Fingerprints digest scanner version, analyzer, rule id, path, source digest,
- * and evidence — so any change to the source, evidence, rule, or scanner
- * reactivates the finding automatically. Suppressions require a reason and
- * may carry approver, ticket, creation, and expiration metadata. Suppressed
- * findings stay visible in reports; they simply do not affect policy or score.
+ * A fingerprint digests the finding's identity: analyzer, rule id, skill-root-
+ * relative path, source digest, redacted evidence, and evidence location. Any
+ * change to the source, evidence, rule, or location reactivates the finding.
+ *
+ * Two dimensions are deliberately EXCLUDED so identity survives ordinary work:
+ *   - the scanner version: a patch release that does not change a rule must not
+ *     reactivate every suppression in every baseline;
+ *   - the absolute checkout path: the same bytes at a different path are the
+ *     same finding, which is what makes two-release comparison meaningful.
+ *
+ * Suppressions require a reason and may carry approver, ticket, creation, and
+ * expiration metadata. Suppressed findings stay visible in reports; they
+ * simply do not affect policy or score.
  */
 import { createHash } from "crypto";
 import { readFileSync, existsSync } from "fs";
@@ -17,9 +25,14 @@ import { Diagnostic } from "./scan.js";
 // ============================================================
 
 export interface FingerprintInput {
-  scannerVersion: string;
+  /**
+   * Retained for API compatibility and diagnostics; NOT part of the digest.
+   * Identity must survive patch releases that leave a rule unchanged.
+   */
+  scannerVersion?: string;
   analyzer: string;
   ruleId: string;
+  /** Skill-root-relative path. Absolute paths are rejected by normalization. */
   path: string;
   sourceDigest: string;
   evidence: string;
@@ -32,7 +45,6 @@ export function findingFingerprint(input: FingerprintInput): string {
     ? `${input.location.precision}:${input.location.startLine}:${input.location.startColumn}:${input.location.endLine}:${input.location.endColumn}`
     : "";
   const material = [
-    input.scannerVersion,
     input.analyzer,
     input.ruleId,
     input.path,
