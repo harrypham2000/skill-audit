@@ -50,6 +50,17 @@ Dependency scanning uses **one authoritative route per run**, in fixed precedenc
 
 An empty `package.json` (no dependency fields) and an empty `requirements.txt` are not material, so they never produce a permanent gap.
 
+### Config and environment file scanning
+
+`SKILL.md`, `AGENTS.md`, and source files are not the only places a skill can carry a credential. The scanner also reads `.env` (and `.env.local`, `production.env`, and similar variants) plus `.json`, `.jsonc`, `.toml`, `.ini`, `.cfg`, `.conf`, `.properties`, `.xml`, and `.txt` files.
+
+These files are treated as **data, not instructions**. They are scanned with the credential and dangerous-payload rule set only: credential leaks (`CL-*`), exfiltration (`EX-*`), shell execution (`CE-*`), secret formats (`SC-*`), and the credential-shaped PII rules (`PII-023`–`PII-039`). Prompt-injection and behavioral rules do not apply to a config value, and the numeric PII rules (versions, UUIDs, IP addresses) would match ordinary lockfile content, so neither set is applied here. A `package.json`, `package-lock.json`, or `tsconfig.json` from a normal project produces no findings.
+
+Two limits are explicit:
+
+- A config file larger than 2 MiB is **not scanned**. It is recorded as `SCAN-ERR-04` in diagnostics, and the security analyzer is marked `partial` — a skipped file never reads as clean.
+- This is pattern matching, not config parsing. A secret split across lines, encoded, or assembled at runtime is not detected.
+
 ## Preflight: declared vs observed
 
 `--mode preflight` decides whether a skill is safe to invoke *right now*, comparing what the skill declares against what static analysis observes, invocation approvals, and environment drift:
@@ -231,6 +242,7 @@ Every report states which features actually ran and how far each implementation 
 | Spec validation | stable | Agent Skills frontmatter and structure checks |
 | Canonical scan kernel | stable | Default mode: versioned report, inspection ledger, analyzers consume the materialized snapshot, policy decision, 0/1/2 exit contract |
 | Pattern detection | stable | Regex security patterns (PI, SC, CE, PII, ENV, CTX); regex precision is line-only |
+| Config/env scanning | stable (pattern-based) | `.env` variants plus JSON/TOML/INI/CFG/CONF/properties/XML/TXT; credential-focused rules only; >2 MiB files reported as partial |
 | Dependency scanning | stable when a route runs; coverage varies | One authoritative route per run (osv-scanner > trivy > OSV API with `--network`); a skipped route with manifests in scope is reported in `coverageGaps` |
 | Environment doctor | stable | Hooks, shell startup, PATH, MCP/tool configs |
 | Fingerprints and suppressions | stable | Governed baselines with reasons, approvers, expirations; automatic reactivation |
@@ -271,6 +283,11 @@ coverage and privacy boundaries. Read these before relying on a scan result.
   [Privacy limitations](#privacy-limitations)); `--no-deps` skips dependency
   scanning entirely at the cost of that coverage. Local KEV/EPSS enrichment is
   experimental and only as fresh as the local caches.
+- **Config coverage is pattern-based and bounded.** `.env` and common config
+  formats are scanned with credential-focused rules; files over 2 MiB are
+  skipped and reported as `partial`. Secrets that are split, encoded, or
+  assembled at runtime are not detected, and config files are not parsed, so
+  format-specific structures are not understood.
 - **Compliance checklists are not wired in.** VN AI Law 2026, EU AI Act, and
   GDPR code exists as library code but scans report compliance as
   `unavailable`/`not_run`; nothing here constitutes legal compliance

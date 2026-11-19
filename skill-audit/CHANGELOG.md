@@ -6,6 +6,7 @@ All notable changes to `@hungpg/skill-audit` are documented here.
 
 ### Added
 
+- `.env` files (`.env`, `.env.local`, `production.env`, and similar variants) and common config formats (`.json`, `.jsonc`, `.toml`, `.ini`, `.cfg`, `.conf`, `.properties`, `.xml`, `.txt`) are now scanned. They use the credential-focused rule set only — credential leaks, exfiltration, shell execution, secret formats, and credential-shaped PII — because config values are data, not agent instructions, and numeric PII rules would match ordinary lockfile versions and hashes. A config file over 2 MiB is reported as `SCAN-ERR-04` and makes the security analyzer `partial` instead of being skipped silently.
 - Reports now carry `coverageGaps`: analyzers that had material in scope but did not cover it. A dependency scan skipped for lack of a scanner (or because of `--no-deps`) while manifests are present is stated explicitly instead of being readable as full coverage.
 - Finding and capability evidence is redacted at report assembly. Secret values become a value-derived `[REDACTED:xxxxxxxx]` placeholder in JSON, SARIF, and terminal output; variable references such as `$TOKEN` or `process.env.X` stay readable.
 

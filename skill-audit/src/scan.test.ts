@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync, symlinkSync }
 import { tmpdir } from "os";
 import { join } from "path";
 import { buildSnapshot, scanSkill, aggregateDecision, DEFAULT_SCAN_LIMITS } from "./scan.js";
+import { toSarif } from "./sarif.js";
 
 const roots: string[] = [];
 
@@ -625,5 +626,46 @@ describe("dependency coverage is scoped to the mode", () => {
     const report = scanSkill(dir, "dep-skill", { deps: false, depsOutOfScope: true });
     expect(report.coverageGaps).toEqual([]);
     expect(report.analyzerRuns.find(a => a.analyzer === "dependencies")!.detail).toContain("not part of this mode");
+  });
+});
+
+describe("config and env scanning in machine-readable reports", () => {
+  // Documented AWS example key: real-shaped, not live.
+  const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
+
+  it("finds a .env credential and redacts it in JSON and SARIF", () => {
+    const dir = makeSkill({
+      ...CLEAN_SKILL,
+      ".env": `AWS_ACCESS_KEY_ID=${AWS_KEY}\n`,
+    }, "env-skill");
+    const report = scanSkill(dir, "env-skill");
+
+    expect(report.findings.some(f => f.id === "SC-005" || f.id === "PII-025")).toBe(true);
+
+    // The canonical JSON report is a shareable artifact: no raw secret.
+    const json = JSON.stringify(report);
+    expect(json).not.toContain(AWS_KEY);
+    expect(json).toContain("[REDACTED:");
+
+    // SARIF is a second renderer; redaction happens at assembly, so it must
+    // not reintroduce the value through properties.evidence.
+    const sarif = JSON.stringify(toSarif([report]));
+    expect(sarif).not.toContain(AWS_KEY);
+    expect(sarif).toContain("[REDACTED:");
+  });
+
+  it("marks a config file it could not scan as partial, not clean", () => {
+    const dir = makeSkill({
+      ...CLEAN_SKILL,
+      "huge.json": `{"padding":"${"a".repeat(2 * 1024 * 1024 + 1)}"}`,
+    }, "huge-config-skill");
+    // Keep the file intact in the snapshot (the default cap truncates it to
+    // exactly 2 MiB), so the config scanner's own cap is what must fire.
+    const report = scanSkill(dir, "huge-config-skill", {
+      limits: { ...DEFAULT_SCAN_LIMITS, maxFileBytes: 4 * 1024 * 1024 },
+    });
+    expect(report.scanStatus).toBe("partial");
+    expect(report.diagnostics.some(d => d.message.includes("SCAN-ERR-04"))).toBe(true);
+    expect(report.analyzerRuns.find(a => a.analyzer === "security-patterns")!.status).toBe("partial");
   });
 });
