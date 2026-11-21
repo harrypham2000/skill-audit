@@ -25,7 +25,7 @@ const FORBIDDEN = [/\.test\.js$/, /\.test\.d\.ts$/, /\.spec\.js$/, /\/tests?\//]
 const PUBLIC_FILES = new Set([
   ...(
     "api ast auto-update compliance context deps discover environment features gateway hooks " +
-    "index intel lifecycle-safety mcp paths patterns python remote reporter sarif scan scoring " +
+    "index intel lifecycle-safety mcp paths patterns python redact remote reporter sarif scan scoring " +
     "security semantic shell spec suppress types"
   ).split(" ").map((name) => `dist/${name}.js`),
   "package.json",

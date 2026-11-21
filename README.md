@@ -31,7 +31,8 @@ Before installing a third-party skill, you need to know:
 - **Exfiltration** patterns (ASI02)
 - **Behavioral manipulation** (ASI09)
 - **PII exposure** (ASI03) — 39 patterns for Vietnam and International PII
-- **Dependency vulnerabilities** (CVE/GHSA/KEV/EPSS)
+- **Config and environment secrets** — `.env` variants and common config formats (JSON/TOML/INI/CFG/CONF/properties/XML/TXT) scanned with credential-focused rules; config data is not treated as agent instructions
+- **Dependency vulnerabilities** (CVE/GHSA/KEV/EPSS) when a local scanner or the opt-in OSV API route is available — a skipped route with manifests in scope is reported as a coverage gap, never as a clean result
 - **Agent environment risks** — suspicious hooks, shell startup files, PATH hijacking, MCP/tool command configs, workspace instruction poisoning, and package lifecycle scripts
 - **Session context gaps** — executable skills that do not declare what agent/session facts they read, require, and write back
 

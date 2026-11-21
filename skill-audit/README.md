@@ -41,6 +41,26 @@ Critical findings and incomplete inspection are direct policy gates; the aggrega
 
 Dependency scanning uses **one authoritative route per run**, in fixed precedence: `osv-scanner` CLI → `trivy` CLI → OSV API. The OSV API route and background intelligence-feed refresh perform network I/O and are **opt-in via `--network`**. The local CLI routes run without `--network`, but the scanner binaries themselves may perform their own network I/O (osv-scanner may query the OSV.dev API; Trivy may auto-download its vulnerability, Java, and checks databases); the package invokes them with fixed arguments and offers no flags to change that — see [Privacy limitations](#privacy-limitations). Pass `--no-deps` to skip dependency scanning entirely. Scanner errors and stale feeds are reported as diagnostics in the canonical report — they never become findings and never affect the risk score or exit decision. When local KEV/EPSS caches exist, dependency findings are enriched with known-exploited markers and EPSS scores (refresh caches with `--update-db`).
 
+**Coverage is stated, never implied.** Dependency analysis is not a required analyzer because its coverage depends on installed tooling, so a skipped route does not by itself fail a scan. It is reported instead:
+
+- `coverageGaps` lists every analyzer that had material in scope but did not cover it, with the reason and the files involved. A `package.json` with declared dependencies and no available scanner produces a gap naming that file.
+- `scanStatus: "complete"` means required inspection completed. It is not a claim that optional analyzers ran — read `coverageGaps` (empty means everything applicable ran) before treating a report as full coverage.
+- The terminal summary appends `N coverage gap(s): dependencies`, and `-v` prints the reason and files.
+- Callers that must not accept a dependency gap can pass `requiredAnalyzers: [..., "dependencies"]`; a skipped dependency run with manifests in scope then becomes insufficient inspection (exit `2`).
+
+An empty `package.json` (no dependency fields) and an empty `requirements.txt` are not material, so they never produce a permanent gap.
+
+### Config and environment file scanning
+
+`SKILL.md`, `AGENTS.md`, and source files are not the only places a skill can carry a credential. The scanner also reads `.env` (and `.env.local`, `production.env`, and similar variants) plus `.json`, `.jsonc`, `.toml`, `.ini`, `.cfg`, `.conf`, `.properties`, `.xml`, and `.txt` files.
+
+These files are treated as **data, not instructions**. They are scanned with the credential and dangerous-payload rule set only: credential leaks (`CL-*`), exfiltration (`EX-*`), shell execution (`CE-*`), secret formats (`SC-*`), and the credential-shaped PII rules (`PII-023`–`PII-039`). Prompt-injection and behavioral rules do not apply to a config value, and the numeric PII rules (versions, UUIDs, IP addresses) would match ordinary lockfile content, so neither set is applied here. A `package.json`, `package-lock.json`, or `tsconfig.json` from a normal project produces no findings.
+
+Two limits are explicit:
+
+- A config file larger than 2 MiB is **not scanned**. It is recorded as `SCAN-ERR-04` in diagnostics, and the security analyzer is marked `partial` — a skipped file never reads as clean.
+- This is pattern matching, not config parsing. A secret split across lines, encoded, or assembled at runtime is not detected.
+
 ## Preflight: declared vs observed
 
 `--mode preflight` decides whether a skill is safe to invoke *right now*, comparing what the skill declares against what static analysis observes, invocation approvals, and environment drift:
@@ -109,7 +129,7 @@ Decisions enforce the context contract at invocation time: command allowlists (e
 
 ## Finding fingerprints, suppressions, and SARIF
 
-Every finding carries a stable fingerprint digesting scanner version, analyzer, rule id, path, source digest, and evidence. Suppression baselines reference these fingerprints:
+Every finding carries a stable fingerprint digesting analyzer, rule id, **skill-root-relative** path, source digest, redacted evidence, and evidence location. The scanner version and the absolute checkout path are deliberately excluded: a patch release that leaves a rule unchanged, or the same skill scanned from a different directory, must not invalidate every baseline. Suppression baselines reference these fingerprints:
 
 ```json
 {
@@ -131,7 +151,17 @@ Every finding carries a stable fingerprint digesting scanner version, analyzer, 
 skill-audit --mode scan --skill-path ./my-skill --suppressions ./suppressions.json --sarif ./report.sarif
 ```
 
-Governance rules: a substantive `reason` is mandatory (files without one are rejected and ignored, with a diagnostic); expired suppressions reactivate automatically; any change to source, evidence, rule, or scanner version changes the fingerprint and reactivates the finding; suppressed findings stay visible in JSON and SARIF output (with suppression metadata) but never affect the policy decision, score, or a `partial`/`failed` scan status. SARIF 2.1.0 output includes `partialFingerprints` for code-scanning matching, and its decisions always agree with the JSON report. The canonical report schema is published at [`schemas/scan-report.schema.json`](./schemas/scan-report.schema.json).
+Governance rules: a substantive `reason` is mandatory (files without one are rejected and ignored, with a diagnostic); expired suppressions reactivate automatically; any change to source, evidence, rule, or evidence location changes the fingerprint and reactivates the finding; suppressed findings stay visible in JSON and SARIF output (with suppression metadata) but never affect the policy decision, score, or a `partial`/`failed` scan status. SARIF 2.1.0 output includes `partialFingerprints` for code-scanning matching, and its decisions always agree with the JSON report. The canonical report schema is published at [`schemas/scan-report.schema.json`](./schemas/scan-report.schema.json).
+
+### Secret redaction in reports
+
+Reports are meant to be shared — with a reviewer, a client, or a CI artifact — so evidence never carries a live credential. Secret values in finding, capability, and preflight evidence are replaced with a value-derived placeholder:
+
+```text
+export API_KEY="sk-live-…"     ->     export API_KEY="[REDACTED:afaf100c]"
+```
+
+The placeholder is a short digest of the secret, not a constant. Two consequences matter: a replaced credential stays distinguishable from the original (so a version comparison reports a change rather than "unchanged"), and the same secret keeps the same placeholder across runs. Variable references (`$API_TOKEN`, `process.env.X`, `env.X`), short values, and non-secret assignments are left readable. Redaction applies to JSON, SARIF, and terminal output because it happens at report assembly, not at each renderer.
 
 ## Consuming canonical scan reports from another tool
 
@@ -212,7 +242,8 @@ Every report states which features actually ran and how far each implementation 
 | Spec validation | stable | Agent Skills frontmatter and structure checks |
 | Canonical scan kernel | stable | Default mode: versioned report, inspection ledger, analyzers consume the materialized snapshot, policy decision, 0/1/2 exit contract |
 | Pattern detection | stable | Regex security patterns (PI, SC, CE, PII, ENV, CTX); regex precision is line-only |
-| Dependency scanning | stable when a route runs; coverage varies | One authoritative route per run (osv-scanner > trivy > OSV API with `--network`); route and coverage are reported per scan |
+| Config/env scanning | stable (pattern-based) | `.env` variants plus JSON/TOML/INI/CFG/CONF/properties/XML/TXT; credential-focused rules only; >2 MiB files reported as partial |
+| Dependency scanning | stable when a route runs; coverage varies | One authoritative route per run (osv-scanner > trivy > OSV API with `--network`); a skipped route with manifests in scope is reported in `coverageGaps` |
 | Environment doctor | stable | Hooks, shell startup, PATH, MCP/tool configs |
 | Fingerprints and suppressions | stable | Governed baselines with reasons, approvers, expirations; automatic reactivation |
 | SARIF output | stable (CI acceptance unverified) | SARIF 2.1.0 with partial fingerprints; decisions agree with JSON |
@@ -252,6 +283,11 @@ coverage and privacy boundaries. Read these before relying on a scan result.
   [Privacy limitations](#privacy-limitations)); `--no-deps` skips dependency
   scanning entirely at the cost of that coverage. Local KEV/EPSS enrichment is
   experimental and only as fresh as the local caches.
+- **Config coverage is pattern-based and bounded.** `.env` and common config
+  formats are scanned with credential-focused rules; files over 2 MiB are
+  skipped and reported as `partial`. Secrets that are split, encoded, or
+  assembled at runtime are not detected, and config files are not parsed, so
+  format-specific structures are not understood.
 - **Compliance checklists are not wired in.** VN AI Law 2026, EU AI Act, and
   GDPR code exists as library code but scans report compliance as
   `unavailable`/`not_run`; nothing here constitutes legal compliance

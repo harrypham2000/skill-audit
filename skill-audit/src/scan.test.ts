@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync, symlinkSync }
 import { tmpdir } from "os";
 import { join } from "path";
 import { buildSnapshot, scanSkill, aggregateDecision, DEFAULT_SCAN_LIMITS } from "./scan.js";
+import { toSarif } from "./sarif.js";
 
 const roots: string[] = [];
 
@@ -473,5 +474,198 @@ describe("symlink target-cycle detection", () => {
     // No cycle exclusion when following is disabled: links are simply skipped.
     const noFollow = buildSnapshot(skillDir);
     expect(noFollow.exclusions.some(e => e.reason === "symlink-cycle")).toBe(false);
+  });
+});
+
+// ============================================================
+// Report safety: redaction and path-independent identity
+// ============================================================
+
+describe("report safety", () => {
+  const SECRET = "sk-abcdefghijklmnopqrstuvwxyz0123456789";
+  const OTHER_SECRET = "sk-zyxwvutsrqponmlkjihgfedcba9876543210";
+  const SECRET_SKILL = {
+    "SKILL.md": `---\nname: secret-skill\ndescription: Demo.\n---\n\n# Demo\n`,
+    "run.sh": `#!/bin/bash\nexport API_KEY="${SECRET}"\n`,
+  };
+
+  it("never emits a live credential in findings, capabilities, or preflight evidence", () => {
+    const dir = makeSkill(SECRET_SKILL, "secret-skill");
+    const report = scanSkill(dir, "secret-skill", { deps: false });
+
+    // The report is meant to be shared, so no surface may carry the value.
+    expect(JSON.stringify(report)).not.toContain(SECRET);
+
+    const secretFinding = report.findings.find(f => f.id === "SC-001");
+    expect(secretFinding).toBeDefined();
+    expect(secretFinding!.evidence).toContain("API_KEY");
+    expect(secretFinding!.evidence).toMatch(/\[REDACTED:[0-9a-f]{8}\]/);
+  });
+
+  it("keeps identity stable across checkout directories", () => {
+    // The same bytes scanned from a different path are the same finding;
+    // otherwise a two-release comparison reports phantom changes.
+    const first = makeSkill(SECRET_SKILL, "secret-skill");
+    const second = makeSkill(SECRET_SKILL, "secret-skill");
+    const a = scanSkill(first, "secret-skill", { deps: false });
+    const b = scanSkill(second, "secret-skill", { deps: false });
+
+    const byId = (r: typeof a) => Object.fromEntries(r.findings.map(f => [f.id, f.fingerprint]));
+    expect(byId(a)).toEqual(byId(b));
+    expect(a.input.snapshotDigest).toBe(b.input.snapshotDigest);
+  });
+
+  it("treats a replaced secret as a change, not as the same finding", () => {
+    // Two different secrets share rule id, file, and message. A constant
+    // placeholder would make the replacement look unchanged.
+    const before = makeSkill(SECRET_SKILL, "secret-skill");
+    const after = makeSkill({
+      ...SECRET_SKILL,
+      "run.sh": `#!/bin/bash\nexport API_KEY="${OTHER_SECRET}"\n`,
+    }, "secret-skill");
+
+    const a = scanSkill(before, "secret-skill", { deps: false });
+    const b = scanSkill(after, "secret-skill", { deps: false });
+    const findingOf = (r: typeof a) => r.findings.find(f => f.id === "SC-001")!;
+
+    expect(findingOf(a).evidence).not.toBe(findingOf(b).evidence);
+    expect(findingOf(a).fingerprint).not.toBe(findingOf(b).fingerprint);
+  });
+
+  it("does not leak the materialization directory into report paths", () => {
+    const dir = makeSkill(SECRET_SKILL, "secret-skill");
+    const report = scanSkill(dir, "secret-skill", { deps: false });
+
+    expect(JSON.stringify(report)).not.toContain("skill-audit-mat-");
+    // Reported paths point at the real skill, not a throwaway copy.
+    const finding = report.findings.find(f => f.id === "SC-001")!;
+    expect(finding.location?.file).toBe(join(dir, "run.sh"));
+  });
+});
+
+// ============================================================
+// Dependency coverage: "complete" must not mean "everything ran"
+// ============================================================
+
+describe("dependency coverage", () => {
+  const DEP_SKILL = {
+    "SKILL.md": `---\nname: dep-skill\ndescription: Skill with dependencies.\n---\n\n# Dep\n`,
+    "package.json": JSON.stringify({ name: "dep-skill", version: "1.0.0", dependencies: { lodash: "4.17.15" } }),
+  };
+
+  it("reports a coverage gap when manifests are in scope but no route ran", () => {
+    const dir = makeSkill(DEP_SKILL, "dep-skill");
+    // Deterministic: no real scanner is consulted.
+    const report = scanSkill(dir, "dep-skill", { deps: true, dependencyScannerAvailable: () => false });
+
+    const gap = report.coverageGaps.find(g => g.analyzer === "dependencies");
+    expect(gap).toBeDefined();
+    expect(gap!.filesInScope).toEqual(["package.json"]);
+    expect(gap!.reason).toContain("no vulnerability route");
+    // The scan itself completed; the gap is stated, not hidden in a status word.
+    expect(report.scanStatus).toBe("complete");
+  });
+
+  it("reports a coverage gap for --no-deps when manifests are in scope", () => {
+    const dir = makeSkill(DEP_SKILL, "dep-skill");
+    const report = scanSkill(dir, "dep-skill", { deps: false });
+
+    const gap = report.coverageGaps.find(g => g.analyzer === "dependencies");
+    expect(gap).toBeDefined();
+    expect(gap!.reason).toContain("--no-deps");
+    expect(gap!.filesInScope).toEqual(["package.json"]);
+  });
+
+  it("reports no gap when there is nothing for a dependency scan to cover", () => {
+    const dir = makeSkill(CLEAN_SKILL, "clean-skill");
+    const report = scanSkill(dir, "clean-skill", { deps: true, dependencyScannerAvailable: () => false });
+    expect(report.coverageGaps).toEqual([]);
+  });
+
+  it("reports no gap when a route actually ran", () => {
+    // A stub osv-scanner on PATH exercises the real completed-route path: the
+    // gap must disappear when coverage was actually performed.
+    const bin = mkdtempSync(join(tmpdir(), "skill-audit-fake-osv-"));
+    roots.push(bin);
+    writeFileSync(join(bin, "osv-scanner"), '#!/bin/sh\nprintf \'{"results":[]}\'\n', { mode: 0o755 });
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}:${originalPath}`;
+    try {
+      const dir = makeSkill(DEP_SKILL, "dep-skill");
+      const report = scanSkill(dir, "dep-skill", { deps: true });
+      expect(report.coverageGaps).toEqual([]);
+      const run = report.analyzerRuns.find(a => a.analyzer === "dependencies")!;
+      expect(run.status).toBe("completed");
+      expect(run.filesInScope).toBe(1);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("gates as incomplete when a caller requires dependency analysis", () => {
+    // `requiredAnalyzers: ["dependencies"]` now actually works: a skipped run
+    // with manifests in scope is insufficient inspection, not a silent pass.
+    const dir = makeSkill(DEP_SKILL, "dep-skill");
+    const report = scanSkill(dir, "dep-skill", {
+      deps: true,
+      dependencyScannerAvailable: () => false,
+      requiredAnalyzers: ["spec", "security-patterns", "ast-typescript", "shell-structural", "python-ast", "dependencies"],
+    });
+    expect(report.scanStatus).toBe("partial");
+    expect(report.decision.exitCode).toBe(2);
+  });
+});
+
+describe("dependency coverage is scoped to the mode", () => {
+  it("does not report a dependency gap when dependency analysis is out of scope", () => {
+    // preflight/mcp-diff disable deps by design; that is not a coverage gap.
+    const dir = makeSkill({
+      "SKILL.md": `---\nname: dep-skill\ndescription: x\n---\n`,
+      "package.json": JSON.stringify({ dependencies: { lodash: "4.17.15" } }),
+    }, "dep-skill");
+    const report = scanSkill(dir, "dep-skill", { deps: false, depsOutOfScope: true });
+    expect(report.coverageGaps).toEqual([]);
+    expect(report.analyzerRuns.find(a => a.analyzer === "dependencies")!.detail).toContain("not part of this mode");
+  });
+});
+
+describe("config and env scanning in machine-readable reports", () => {
+  // Documented AWS example key: real-shaped, not live.
+  const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
+
+  it("finds a .env credential and redacts it in JSON and SARIF", () => {
+    const dir = makeSkill({
+      ...CLEAN_SKILL,
+      ".env": `AWS_ACCESS_KEY_ID=${AWS_KEY}\n`,
+    }, "env-skill");
+    const report = scanSkill(dir, "env-skill");
+
+    expect(report.findings.some(f => f.id === "SC-005" || f.id === "PII-025")).toBe(true);
+
+    // The canonical JSON report is a shareable artifact: no raw secret.
+    const json = JSON.stringify(report);
+    expect(json).not.toContain(AWS_KEY);
+    expect(json).toContain("[REDACTED:");
+
+    // SARIF is a second renderer; redaction happens at assembly, so it must
+    // not reintroduce the value through properties.evidence.
+    const sarif = JSON.stringify(toSarif([report]));
+    expect(sarif).not.toContain(AWS_KEY);
+    expect(sarif).toContain("[REDACTED:");
+  });
+
+  it("marks a config file it could not scan as partial, not clean", () => {
+    const dir = makeSkill({
+      ...CLEAN_SKILL,
+      "huge.json": `{"padding":"${"a".repeat(2 * 1024 * 1024 + 1)}"}`,
+    }, "huge-config-skill");
+    // Keep the file intact in the snapshot (the default cap truncates it to
+    // exactly 2 MiB), so the config scanner's own cap is what must fire.
+    const report = scanSkill(dir, "huge-config-skill", {
+      limits: { ...DEFAULT_SCAN_LIMITS, maxFileBytes: 4 * 1024 * 1024 },
+    });
+    expect(report.scanStatus).toBe("partial");
+    expect(report.diagnostics.some(d => d.message.includes("SCAN-ERR-04"))).toBe(true);
+    expect(report.analyzerRuns.find(a => a.analyzer === "security-patterns")!.status).toBe("partial");
   });
 });

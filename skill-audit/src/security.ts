@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { basename, extname } from "path";
 import { SkillInfo, SkillManifest, Finding } from "./types.js";
 import { resolveSkillPath, getSkillFiles } from "./discover.js";
@@ -213,6 +213,43 @@ const TRUSTED_PROTOCOLS = ['https:', 'git:'];
 function isCodeFile(filename: string): boolean {
   const codeExtensions = [".sh", ".bash", ".py", ".js", ".ts", ".tsx", ".jsx", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".cs", ".php", ".yaml", ".yml"];
   return codeExtensions.includes(extname(filename).toLowerCase());
+}
+
+// ============================================================
+// CONFIG / ENV SCANNING
+// ============================================================
+
+/**
+ * Configuration and environment files are DATA, not instructions. They are
+ * scanned for credentials and dangerous payloads, but not for prompt
+ * injection, behavioral manipulation, or numeric PII: a version string or a
+ * UUID in a lockfile is not a security finding, and treating a config value
+ * as an instruction to the agent would be a category error.
+ *
+ * `.env` is matched by basename because `extname(".env")` is empty and
+ * variants (`.env.local`, `production.env`) share no useful extension.
+ */
+const CONFIG_FILE_EXTENSIONS = new Set([
+  ".json", ".jsonc", ".toml", ".ini", ".cfg", ".conf", ".properties", ".xml", ".txt",
+]);
+
+/** PII rules that describe a credential value, not a person or a version. */
+const CONFIG_PII_ID = /^PII-0(?:2[3-9]|3\d)$/;
+
+/**
+ * Config scanning is line-oriented and reads whole files. Cap the work per
+ * file so a large lockfile cannot stall a scan. A skipped file is recorded as
+ * a scanner diagnostic, never silently dropped.
+ */
+const MAX_CONFIG_SCAN_BYTES = 2 * 1024 * 1024;
+
+function isEnvFile(filename: string): boolean {
+  const base = basename(filename).toLowerCase();
+  return base === ".env" || base.startsWith(".env.") || base.endsWith(".env");
+}
+
+function isConfigFile(filename: string): boolean {
+  return CONFIG_FILE_EXTENSIONS.has(extname(filename).toLowerCase());
 }
 
 function isKnownSafeScript(filePath: string, content: string): boolean {
@@ -466,6 +503,29 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
 
   for (const file of files) {
     const filename = basename(file);
+    const configLike = isEnvFile(filename) || isConfigFile(filename);
+
+    if (configLike) {
+      try {
+        const size = statSync(file).size;
+        if (size > MAX_CONFIG_SCAN_BYTES) {
+          // A skipped file is stated, not implied: this becomes a diagnostic
+          // and makes the security analyzer partial in the canonical report.
+          findings.push({
+            id: "SCAN-ERR-04",
+            category: "SC",
+            asi: "ASI04",
+            severity: "medium",
+            file,
+            message: `Config file exceeds ${MAX_CONFIG_SCAN_BYTES} bytes and was not scanned`,
+            evidence: `${filename} (${size} bytes)`,
+          });
+          continue;
+        }
+      } catch {
+        // Fall through; readFileSync below reports the file as unreadable.
+      }
+    }
 
     try {
       const content = readFileSync(file, "utf-8");
@@ -521,6 +581,28 @@ export function auditSecurity(skill: SkillInfo, manifest?: SkillManifest): Secur
         }
         // NEW: Always scan for PII-aware exfiltration
         findings.push(...scanContent(content, file, PII_EXFILTRATION_PATTERNS));
+      } else if (configLike) {
+        // Credential-focused only. Config data is not agent instruction text,
+        // so PI/BM rules would be category errors and numeric PII rules would
+        // match versions, hashes, and IDs on nearly every lockfile.
+        if (hasExternalPatterns) {
+          const clPatterns = patterns.get("credentialLeaks") || [];
+          const exPatterns = patterns.get("exfiltration") || [];
+          const cePatterns = patterns.get("shellInjection") || [];
+          const scPatterns = patterns.get("secrets") || [];
+          const piiPatterns = (patterns.get("pii") || []).filter(p => CONFIG_PII_ID.test(p.id));
+
+          findings.push(...scanContent(content, file, clPatterns));
+          findings.push(...scanContent(content, file, exPatterns));
+          findings.push(...scanContent(content, file, cePatterns));
+          findings.push(...scanContent(content, file, scPatterns));
+          findings.push(...scanContent(content, file, piiPatterns));
+        } else {
+          findings.push(...scanContent(content, file, CREDENTIAL_PATTERNS_CODE));
+          findings.push(...scanContent(content, file, EXFILTRATION_PATTERNS));
+          findings.push(...scanContent(content, file, DANGEROUS_PATTERNS));
+          findings.push(...scanContent(content, file, SECRET_PATTERNS));
+        }
       }
     } catch (e) {
       unreadableFiles.push(file);

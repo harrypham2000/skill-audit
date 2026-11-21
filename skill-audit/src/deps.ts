@@ -146,6 +146,80 @@ function isScannerAvailable(scanner: string): boolean {
 }
 
 // ============================================================
+// Dependency scope: what would a dependency scan have covered?
+// ============================================================
+
+/**
+ * Manifest and lockfile basenames that make dependency analysis applicable.
+ * Lockfiles are evidence on their own; manifests are only material when they
+ * actually declare dependencies (an empty package.json has nothing to scan).
+ */
+const DEPENDENCY_MATERIAL_NAMES = new Set([
+  ...Object.keys(LOCKFILE_PATTERNS),
+  "package.json",
+  "pyproject.toml",
+  "Pipfile",
+  "Cargo.toml",
+  "Gemfile",
+  "composer.json",
+  "build.gradle",
+  "build.gradle.kts",
+  "pubspec.yaml",
+  "mix.exs",
+  "conanfile.txt",
+  "setup.py",
+  "setup.cfg",
+]);
+
+function packageJsonDeclaresDependencies(content: string | undefined): boolean {
+  // Unreadable or truncated content cannot prove the manifest is empty.
+  if (content === undefined) return true;
+  let pkg: unknown;
+  try {
+    pkg = JSON.parse(content);
+  } catch {
+    // A malformed manifest is still material: it may declare dependencies.
+    return true;
+  }
+  if (typeof pkg !== "object" || pkg === null) return true;
+  const fields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
+  return fields.some(field => {
+    const value = (pkg as Record<string, unknown>)[field];
+    return typeof value === "object" && value !== null && Object.keys(value).length > 0;
+  });
+}
+
+function requirementsDeclaresDependencies(content: string | undefined): boolean {
+  if (content === undefined) return true;
+  return content
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .some(line => line.length > 0 && !line.startsWith("#"));
+}
+
+/**
+ * Skill-root-relative files that make dependency analysis applicable.
+ *
+ * This is the scope a dependency scan would have covered, computed from the
+ * immutable snapshot rather than the live tree. It lets the report say whether
+ * dependency coverage was actually exercised: an empty list means dependency
+ * scanning had nothing to do, so a skipped analyzer is honest.
+ */
+export function dependencyMaterialInScope(
+  files: Array<{ path: string; content?: string }>
+): string[] {
+  const inScope: string[] = [];
+  for (const file of files) {
+    const base = file.path.split("/").pop() ?? file.path;
+    if (!DEPENDENCY_MATERIAL_NAMES.has(base)) continue;
+    if (base === "package.json" && !packageJsonDeclaresDependencies(file.content)) continue;
+    if (base === "requirements.txt" && !requirementsDeclaresDependencies(file.content)) continue;
+    inScope.push(file.path);
+  }
+  return inScope;
+}
+
+// ============================================================
 // Phase 2: single authoritative route, diagnostics, enrichment
 // ============================================================
 

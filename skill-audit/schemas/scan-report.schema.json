@@ -38,7 +38,8 @@
           "status": { "enum": ["completed", "partial", "skipped", "failed", "not_applicable"] },
           "detail": { "type": "string" },
           "findings": { "type": "integer", "minimum": 0 },
-          "durationMs": { "type": "integer", "minimum": 0 }
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "filesInScope": { "type": "integer", "minimum": 0, "description": "Candidates in scope for this analyzer (gating input, whether it ran or was skipped)." }
         }
       }
     },
@@ -67,6 +68,19 @@
       }
     },
     "scanStatus": { "enum": ["complete", "partial", "failed"] },
+    "coverageGaps": {
+      "type": "array",
+      "description": "Analyzers that had material in scope but did not cover it. Absent means coverage was not stated (older report); an empty array means every applicable analyzer ran. Current scanners always emit it.",
+      "items": {
+        "type": "object",
+        "required": ["analyzer", "reason", "filesInScope"],
+        "properties": {
+          "analyzer": { "type": "string" },
+          "reason": { "type": "string" },
+          "filesInScope": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
     "decision": { "$ref": "#/$defs/decision" },
     "suppressedCount": { "type": "integer", "minimum": 0 },
     "preflight": { "$ref": "#/$defs/preflight" },

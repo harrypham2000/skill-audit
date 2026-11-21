@@ -50,12 +50,19 @@ describe("findingFingerprint", () => {
     expect(findingFingerprint(FP_BASE)).toBe(findingFingerprint(FP_BASE));
   });
 
-  it("changes with every fingerprinted dimension", () => {
+  it("is stable across scanner versions and checkout paths", () => {
+    // Identity must survive a patch release and a different checkout: these are
+    // the two dimensions that made two-release comparison unreliable.
     const base = findingFingerprint(FP_BASE);
-    expect(findingFingerprint({ ...FP_BASE, scannerVersion: "0.9.5" })).not.toBe(base);
+    expect(findingFingerprint({ ...FP_BASE, scannerVersion: "0.9.5" })).toBe(base);
+    expect(findingFingerprint({ ...FP_BASE, scannerVersion: undefined })).toBe(base);
+  });
+
+  it("changes with every identity dimension", () => {
+    const base = findingFingerprint(FP_BASE);
     expect(findingFingerprint({ ...FP_BASE, analyzer: "spec" })).not.toBe(base);
     expect(findingFingerprint({ ...FP_BASE, ruleId: "PI-002" })).not.toBe(base);
-    expect(findingFingerprint({ ...FP_BASE, path: "/y/SKILL.md" })).not.toBe(base);
+    expect(findingFingerprint({ ...FP_BASE, path: "other/SKILL.md" })).not.toBe(base);
     expect(findingFingerprint({ ...FP_BASE, sourceDigest: "b".repeat(64) })).not.toBe(base);
     expect(findingFingerprint({ ...FP_BASE, evidence: "different" })).not.toBe(base);
   });

@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { enrichDependencyFindings, scanDependenciesDetailed, selectDependencyRoute } from "./deps.js";
+import { dependencyMaterialInScope, enrichDependencyFindings, scanDependenciesDetailed, selectDependencyRoute } from "./deps.js";
 import { AdvisoryRecord } from "./intel.js";
 import { Finding } from "./types.js";
 
@@ -128,5 +128,52 @@ describe("scanDependenciesDetailed with no real scanners", () => {
     expect(result.route).toBe("none");
     expect(result.findings).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("dependencyMaterialInScope", () => {
+  it("treats a package.json with declared dependencies as material", () => {
+    expect(dependencyMaterialInScope([
+      { path: "package.json", content: JSON.stringify({ name: "x", dependencies: { lodash: "4.17.15" } }) },
+    ])).toEqual(["package.json"]);
+  });
+
+  it("treats devDependencies and optionalDependencies as material", () => {
+    expect(dependencyMaterialInScope([
+      { path: "package.json", content: JSON.stringify({ devDependencies: { vitest: "1.0.0" } }) },
+    ])).toEqual(["package.json"]);
+    expect(dependencyMaterialInScope([
+      { path: "package.json", content: JSON.stringify({ optionalDependencies: { fsevents: "2.0.0" } }) },
+    ])).toEqual(["package.json"]);
+  });
+
+  it("does not call an empty or metadata-only package.json material", () => {
+    // Otherwise every skill that ships a package.json for tooling would show a
+    // permanent dependency coverage gap with nothing to scan.
+    expect(dependencyMaterialInScope([{ path: "package.json", content: "{}" }])).toEqual([]);
+    expect(dependencyMaterialInScope([
+      { path: "package.json", content: JSON.stringify({ name: "x", version: "1.0.0", scripts: { test: "x" } }) },
+    ])).toEqual([]);
+  });
+
+  it("treats a lockfile as material on its own", () => {
+    expect(dependencyMaterialInScope([{ path: "package-lock.json", content: "{}" }])).toEqual(["package-lock.json"]);
+    expect(dependencyMaterialInScope([{ path: "poetry.lock", content: "" }])).toEqual(["poetry.lock"]);
+  });
+
+  it("treats requirements.txt as material only when it lists something", () => {
+    expect(dependencyMaterialInScope([{ path: "requirements.txt", content: "# none\n\n" }])).toEqual([]);
+    expect(dependencyMaterialInScope([{ path: "requirements.txt", content: "# deps\nflask==2.0.0\n" }])).toEqual(["requirements.txt"]);
+  });
+
+  it("keeps unreadable or malformed manifests in scope", () => {
+    expect(dependencyMaterialInScope([{ path: "package.json" }])).toEqual(["package.json"]);
+    expect(dependencyMaterialInScope([{ path: "package.json", content: "{not json" }])).toEqual(["package.json"]);
+  });
+
+  it("reports nested manifests by their skill-root-relative path", () => {
+    expect(dependencyMaterialInScope([
+      { path: "tools/cli/package.json", content: JSON.stringify({ dependencies: { y: "1" } }) },
+    ])).toEqual(["tools/cli/package.json"]);
   });
 });

@@ -20,9 +20,10 @@ import { dirname } from "path";
 import { Finding } from "./types.js";
 import { auditSecurity } from "./security.js";
 import { validateSkillSpec } from "./spec.js";
-import { scanDependenciesDetailed } from "./deps.js";
+import { scanDependenciesDetailed, dependencyMaterialInScope } from "./deps.js";
 import { observeProcessExec, parseContextContract, evaluatePreflight, PreflightDecision, ObservedCapability } from "./context.js";
 import { findingFingerprint, loadSuppressions, applySuppressions } from "./suppress.js";
+import { redactEvidence } from "./redact.js";
 import { analyzeTypeScript } from "./ast.js";
 import { analyzeShell } from "./shell.js";
 import { analyzePython } from "./python.js";
@@ -363,6 +364,15 @@ export interface PolicyDecision {
   exitCode: 0 | 1 | 2;
 }
 
+export interface CoverageGap {
+  /** Analyzer that did not cover material in scope. */
+  analyzer: string;
+  /** Human-readable reason, matching the analyzer run detail. */
+  reason: string;
+  /** Skill-root-relative files that made this analyzer applicable. */
+  filesInScope: string[];
+}
+
 export interface ScanReport {
   schemaVersion: "1";
   scanner: { name: string; version: string };
@@ -381,6 +391,12 @@ export interface ScanReport {
   diagnostics: Diagnostic[];
   exclusions: ScopeExclusion[];
   scanStatus: "complete" | "partial" | "failed";
+  /**
+   * Analyzers that had material in scope but did not cover it. `scanStatus`
+   * describes required inspection; this block states optional coverage
+   * explicitly so a skipped dependency route is never read as "everything ran".
+   */
+  coverageGaps: CoverageGap[];
   decision: PolicyDecision;
   /** Findings currently suppressed by a governed baseline. */
   suppressedCount: number;
@@ -405,8 +421,15 @@ export interface ScanOptions {
   limits?: Partial<ScanLimits>;
   /** Enable dependency scanning. Default false in the kernel; CLI decides. */
   deps?: boolean;
+  /**
+   * Dependency analysis is not part of this invocation's contract (preflight,
+   * mcp-diff, or another focused mode). Suppresses a coverage gap for deps.
+   */
+  depsOutOfScope?: boolean;
   /** Allow network-dependent routes (OSV API). Default false: local scanners only. */
   network?: boolean;
+  /** Injectable scanner availability check (tests, embedded callers). */
+  dependencyScannerAvailable?: (scanner: string) => boolean;
   /** Score threshold for the score.threshold policy rule. */
   threshold?: number;
   /** Analyzer names that must succeed for the scan to be complete. */
@@ -647,17 +670,31 @@ export function scanSkill(skillPath: string, skillName: string, options: ScanOpt
   }
 
   // ---- Analyzer: dependency scanning ----
+  //
+  // Dependency coverage is stated explicitly rather than inferred from the
+  // scan status: `dependencies` is not a required analyzer (its coverage
+  // legitimately depends on installed scanners), so a skipped run must not be
+  // readable as "everything was checked". `dependencyMaterialInScope` is the
+  // set of manifests a scan would have covered.
+  const depMaterial = snapshot ? dependencyMaterialInScope(snapshot.files) : [];
   const depsStart = Date.now();
+  let depGapReason: string | undefined;
   if (options.deps) {
     try {
       const depResult = scanDependenciesDetailed(analyzerRoot, {
         allowNetwork: options.network === true,
+        ...(options.dependencyScannerAvailable ? { scannerAvailable: options.dependencyScannerAvailable } : {}),
       });
       depFindings.push(...depResult.findings);
       for (const d of depResult.diagnostics) {
         diagnostics.push({ source: `dependencies:${d.source}`, message: d.message });
       }
       const routeError = depResult.diagnostics.some(d => d.message.includes("scan error"));
+      if (depResult.route === "none") {
+        depGapReason = "no vulnerability route available for this run";
+      } else if (routeError) {
+        depGapReason = `route ${depResult.route} reported errors; coverage degraded`;
+      }
       analyzerRuns.push({
         analyzer: "dependencies",
         // route "none" is a capability gap (skipped); route errors are
@@ -670,13 +707,20 @@ export function scanSkill(skillPath: string, skillName: string, options: ScanOpt
             : `route: ${depResult.route}`,
         findings: depResult.findings.length,
         durationMs: Date.now() - depsStart,
+        // Material in scope makes a skip a real coverage gap (and lets a
+        // caller that requires `dependencies` gate on it).
+        filesInScope: depMaterial.length,
       });
     } catch (e) {
-      analyzerRuns.push({ analyzer: "dependencies", status: "failed", detail: String(e), findings: 0, durationMs: Date.now() - depsStart });
+      depGapReason = String(e);
+      analyzerRuns.push({ analyzer: "dependencies", status: "failed", detail: String(e), findings: 0, durationMs: Date.now() - depsStart, filesInScope: depMaterial.length });
       diagnostics.push({ source: "dependencies", message: `analyzer threw: ${String(e)}` });
     }
   } else {
-    analyzerRuns.push({ analyzer: "dependencies", status: "skipped", detail: "deps disabled for this run", findings: 0, durationMs: 0 });
+    if (depMaterial.length > 0 && !options.depsOutOfScope) {
+      depGapReason = "dependency scanning disabled for this run (--no-deps)";
+    }
+    analyzerRuns.push({ analyzer: "dependencies", status: "skipped", detail: options.depsOutOfScope ? "dependency analysis not part of this mode" : "deps disabled for this run", findings: 0, durationMs: 0 });
   }
 
   // ---- Analyzer: TypeScript/JavaScript AST (Phase 5, slice 1) ----
@@ -877,34 +921,63 @@ export function scanSkill(skillPath: string, skillName: string, options: ScanOpt
 
   // Findings produced against the materialized copy must reference the
   // original skill paths; otherwise fingerprints would not be reproducible.
-  const normalizePath = (f: Finding): Finding =>
-    materializedRoot && f.file.startsWith(materializedRoot) && snapshot
-      ? { ...f, file: snapshot.root + f.file.slice(materializedRoot.length) }
-      : f;
+  // `location.file` is normalized the same way — it is the field that used to
+  // leak the throwaway materialization directory into every report.
+  const normalizePath = (f: Finding): Finding => {
+    if (!materializedRoot || !snapshot || !f.file.startsWith(materializedRoot)) return f;
+    const original = snapshot.root + f.file.slice(materializedRoot.length);
+    const location = f.location && f.location.file.startsWith(materializedRoot)
+      ? { ...f.location, file: snapshot.root + f.location.file.slice(materializedRoot.length) }
+      : f.location;
+    return { ...f, file: original, ...(location ? { location } : {}) };
+  };
   for (let i = 0; i < specFindings.length; i++) specFindings[i] = normalizePath(specFindings[i]);
   for (let i = 0; i < secFindings.length; i++) secFindings[i] = normalizePath(secFindings[i]);
   for (let i = 0; i < depFindings.length; i++) depFindings[i] = normalizePath(depFindings[i]);
 
   // ---- Fingerprints and governed suppressions (Phase 4) ----
-  const scannerVersion = getScannerVersion();
+  //
+  // Identity is computed from the skill-root-relative path, never the absolute
+  // one: the same bytes scanned from a different checkout are the same finding.
+  // Evidence is redacted first so the digest never depends on a secret value —
+  // and so two different secrets still produce two different placeholders.
+  const skillRoot = snapshot?.root ?? skillPath;
+  const relativePathFor = (file: string): string => {
+    if (!file) return "";
+    if (file === skillRoot) return "";
+    if (file.startsWith(skillRoot + "/") || file.startsWith(skillRoot + "\\")) {
+      return file.slice(skillRoot.length + 1).replace(/\\/g, "/");
+    }
+    // Findings may already carry a relative path (analyzer-observed capabilities).
+    return file.replace(/\\/g, "/");
+  };
+  const redactFinding = (f: Finding): Finding => ({
+    ...f,
+    ...(f.evidence !== undefined ? { evidence: redactEvidence(f.evidence) } : {}),
+  });
   const sourceDigestFor = (file: string): string => {
     if (!snapshot) return "";
-    const match = snapshot.files.find(f => f.absolutePath === file || file.endsWith(f.path) || f.path.endsWith(file));
+    const rel = relativePathFor(file);
+    const match = snapshot.files.find(f => f.path === rel)
+      ?? snapshot.files.find(f => f.absolutePath === file)
+      ?? snapshot.files.find(f => file.endsWith(f.path) || f.path.endsWith(file));
     return match?.sha256 ?? "";
   };
   const fingerprintGroup = (group: Finding[], analyzer: string): Finding[] =>
-    group.map(f => ({
-      ...f,
-      fingerprint: findingFingerprint({
-        scannerVersion,
-        analyzer,
-        ruleId: f.id,
-        path: f.file,
-        sourceDigest: sourceDigestFor(f.file),
-        evidence: f.evidence ?? f.message,
-        location: f.location,
-      }),
-    }));
+    group.map(raw => {
+      const f = redactFinding(raw);
+      return {
+        ...f,
+        fingerprint: findingFingerprint({
+          analyzer,
+          ruleId: f.id,
+          path: relativePathFor(f.file),
+          sourceDigest: sourceDigestFor(f.file),
+          evidence: f.evidence ?? f.message,
+          location: f.location,
+        }),
+      };
+    });
 
   let findings: Finding[] = [
     ...fingerprintGroup(specFindings, "spec"),
@@ -1009,6 +1082,14 @@ export function scanSkill(skillPath: string, skillName: string, options: ScanOpt
       ? "partial"
       : "complete";
 
+  // Optional coverage is stated, not inferred. A skipped dependency route with
+  // manifests in scope is a real gap even though it does not change scanStatus
+  // (dependency tooling is environment-dependent and never required).
+  const coverageGaps: CoverageGap[] = [];
+  if (depGapReason && depMaterial.length > 0) {
+    coverageGaps.push({ analyzer: "dependencies", reason: depGapReason, filesInScope: depMaterial });
+  }
+
   report = {
     schemaVersion: "1",
     scanner: { name: "skill-audit", version: getScannerVersion() },
@@ -1021,14 +1102,22 @@ export function scanSkill(skillPath: string, skillName: string, options: ScanOpt
       remote: options.remoteProvenance,
     },
     findings,
-    capabilities,
+    // Capabilities and preflight violations quote source lines too; redact them
+    // at the same seam so no report surface carries a live credential.
+    capabilities: capabilities.map(c => ({ ...c, evidence: redactEvidence(c.evidence) })),
     analyzerRuns,
     diagnostics,
     exclusions: snapshot?.exclusions ?? [],
     scanStatus,
+    coverageGaps,
     decision,
     suppressedCount,
-    preflight,
+    preflight: preflight
+      ? {
+          ...preflight,
+          violations: preflight.violations.map(v => ({ ...v, evidence: redactEvidence(v.evidence ?? "") })),
+        }
+      : undefined,
     riskScore,
   };
   } finally {
@@ -1083,18 +1172,33 @@ export function withExtraFindings(
     analyzerDetail?: string;
   } = {}
 ): ScanReport {
-  const fingerprinted = extraFindings.map(f => ({
-    ...f,
-    fingerprint: findingFingerprint({
-      scannerVersion: report.scanner.version,
-      analyzer,
-      ruleId: f.id,
-      path: f.file,
-      sourceDigest: opts.sourceDigest ?? "",
-      evidence: f.evidence ?? f.message,
-      location: f.location,
-    }),
-  }));
+  // Extra findings pass through the same redaction seam as analyzer findings so
+  // an added analyzer (semantic, custom) cannot reintroduce a live secret. The
+  // path is normalized the same way, so an extra finding and a native one for
+  // the same file share identity.
+  const root = report.input.path;
+  const relativePath = (file: string): string => {
+    if (!file) return "";
+    if (file === root) return "";
+    if (file.startsWith(root + "/") || file.startsWith(root + "\\")) {
+      return file.slice(root.length + 1).replace(/\\/g, "/");
+    }
+    return file.replace(/\\/g, "/");
+  };
+  const fingerprinted = extraFindings.map(raw => {
+    const f = { ...raw, ...(raw.evidence !== undefined ? { evidence: redactEvidence(raw.evidence) } : {}) };
+    return {
+      ...f,
+      fingerprint: findingFingerprint({
+        analyzer,
+        ruleId: f.id,
+        path: relativePath(f.file),
+        sourceDigest: opts.sourceDigest ?? "",
+        evidence: f.evidence ?? f.message,
+        location: f.location,
+      }),
+    };
+  });
 
   let findings = [...report.findings, ...fingerprinted];
   let suppressedCount = report.suppressedCount;

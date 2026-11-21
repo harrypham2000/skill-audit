@@ -319,6 +319,7 @@ if (mode === "mcp-diff") {
     : basename(options.skillPath);
   const report = scanSkill(options.skillPath, name, {
     deps: false,
+    depsOutOfScope: true,
     suppressionsPath: options.suppressions,
     mcpBaselinePath: options.baselineConfig,
   });
@@ -362,6 +363,7 @@ if (mode === "preflight") {
 
   const report = scanSkill(options.skillPath, name, {
     deps: false,
+    depsOutOfScope: true,
     approvals: options.approve,
     environmentDrift,
   });
@@ -573,9 +575,18 @@ if (mode === "scan") {
     }, null, 2));
   } else if (!options.quiet) {
     for (const r of reports) {
-      const icon = r.decision.exitCode === 0 ? "✅" : r.decision.exitCode === 1 ? "🔴" : "⚠️";
+      // A green check would overstate a scan that could not cover everything
+      // applicable; the gap is surfaced in the same line.
+      const icon = r.decision.exitCode === 2
+        ? "⚠️"
+        : r.decision.exitCode === 1
+          ? "🔴"
+          : r.coverageGaps.length > 0 ? "⚠️" : "✅";
       const suppressedNote = r.suppressedCount > 0 ? `, ${r.suppressedCount} suppressed` : "";
-      console.log(`${icon} ${r.input.skill} — ${r.scanStatus}, ${r.findings.length} finding(s)${suppressedNote}, score ${r.riskScore}`);
+      const gapNote = r.coverageGaps.length > 0
+        ? `, ${r.coverageGaps.length} coverage gap(s): ${r.coverageGaps.map(g => g.analyzer).join(", ")}`
+        : "";
+      console.log(`${icon} ${r.input.skill} — ${r.scanStatus}, ${r.findings.length} finding(s)${suppressedNote}, score ${r.riskScore}${gapNote}`);
       if (options.verbose) {
         for (const f of r.findings) {
           const flag = f.suppressed ? " [SUPPRESSED]" : "";
@@ -583,6 +594,9 @@ if (mode === "scan") {
         }
         for (const a of r.analyzerRuns) {
           console.log(`   · analyzer ${a.analyzer}: ${a.status}`);
+        }
+        for (const gap of r.coverageGaps) {
+          console.log(`   · coverage gap ${gap.analyzer}: ${gap.reason} (${gap.filesInScope.join(", ")})`);
         }
         for (const d of r.diagnostics) {
           console.log(`   · diagnostic ${d.source}: ${d.message}`);
